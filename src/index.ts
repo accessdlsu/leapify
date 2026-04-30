@@ -129,7 +129,7 @@ export type {
   SiteConfigKey,
   SiteConfigMap,
 } from "./types";
-export type { LeapifyUser, FirebaseTokenClaims } from "./auth/types";
+export type { LeapifyUser } from "./auth/types";
 export type { LeapifyDb } from "./db";
 export type { LeapifyJob } from "./queues/jobs";
 export type { SlotInfo } from "./services/slots";

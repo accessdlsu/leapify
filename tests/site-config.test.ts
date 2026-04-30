@@ -1,7 +1,7 @@
 import { test, expect, describe, beforeEach } from 'vitest'
 import { createTestApp } from './helpers/app'
 import { resetTestDb, getTestDb } from './helpers/setup'
-import { makeTestToken, seedUserInKV } from './helpers/auth'
+import { makeTestSession } from './helpers/auth'
 import { seedUser } from './helpers/seed'
 import { siteConfig } from '../src/db/schema/site-config'
 
@@ -17,12 +17,11 @@ describe('Site Config API', () => {
     const db = getTestDb()
 
     const adminUser = await seedUser(db, {
-      firebaseUid: 'admin-uid',
+      betterAuthId: 'admin-uid',
       email: 'admin@dlsu.edu.ph',
       role: 'admin',
     })
-    await seedUserInKV(kv, 'admin-uid', 'admin', adminUser.id)
-    adminToken = makeTestToken('admin-uid')
+    adminToken = await makeTestSession(db, kv, 'admin-uid', 'admin', adminUser.id)
 
     await db.insert(siteConfig).values({
       key: 'coming_soon_until',

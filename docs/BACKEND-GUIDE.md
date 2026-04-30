@@ -51,7 +51,7 @@ Leapify tracks real-time slots via Google Forms Webhooks.
 7. `GFORMS_WEBHOOK_SECRET`: A random 32-character hex string. Generate it using:
 
    ```bash
-   openssl rand -hex 32
+   openssl rand -base64 32
    ```
 
 ### [Contentful (CMS)](https://app.contentful.com/)
@@ -126,7 +126,7 @@ Leapify uses a shared secret to verify internal webhook calls from Google.
 - `INTERNAL_API_SECRET`: Generate a random 32-character hex string:
 
   ```bash
-  openssl rand -hex 32
+  openssl rand -base64 32
   ```
 
 ---

@@ -1,7 +1,7 @@
 import { test, expect, describe, beforeEach } from 'vitest'
 import { createTestApp } from './helpers/app'
 import { resetTestDb, getTestDb } from './helpers/setup'
-import { makeTestToken, seedUserInKV } from './helpers/auth'
+import { makeTestSession } from './helpers/auth'
 import { seedEvent, seedUser } from './helpers/seed'
 
 describe('Users & Bookmarks API', () => {
@@ -17,12 +17,11 @@ describe('Users & Bookmarks API', () => {
     const db = getTestDb()
 
     const studentUser = await seedUser(db, {
-      firebaseUid: 'student-uid-1',
+      betterAuthId: 'student-uid-1',
       email: 'student@dlsu.edu.ph',
       role: 'student',
     })
-    await seedUserInKV(kv, 'student-uid-1', 'student', studentUser.id)
-    userToken = makeTestToken('student-uid-1')
+    userToken = await makeTestSession(db, kv, 'student-uid-1', 'student', studentUser.id)
 
     const event = await seedEvent(db, { slug: 'e1', status: 'published' })
     eventId = event.id

@@ -1,26 +1,17 @@
 import type { UserRole } from '../db/schema/users'
 
 /**
- * Claims extracted from a Firebase RS256 ID token.
+ * Leapify application user.
+ * Built from the Better Auth session + our `users` D1 row.
+ * Cached in KV under `auth:session:<token>` for the session's lifetime.
  */
-export interface FirebaseTokenClaims {
-  iss: string
-  aud: string
-  sub: string   // Firebase UID
-  iat: number
-  exp: number
-  email: string
-  email_verified: boolean
-  name?: string
-  picture?: string
-}
-
-/**
- * Extended user combining Firebase claims + D1 role.
- * This is what gets cached in KV and set on c.var.user.
- */
-export interface LeapifyUser extends FirebaseTokenClaims {
-  uid: string       // alias for sub, for convenience
-  dbId: string      // D1 users.id
+export interface LeapifyUser {
+  /** Better Auth user.id (stored as users.better_auth_id) */
+  uid: string
+  /** Our internal users.id (used for FK joins in bookmarks, etc.) */
+  dbId: string
   role: UserRole
+  email: string
+  name: string
+  emailVerified: boolean
 }

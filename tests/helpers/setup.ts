@@ -26,18 +26,22 @@ let currentDb: ReturnType<typeof bsDrizzle>
 
 function buildDb() {
   const migrationsPath = path.resolve(__dirname, '../../drizzle')
-  const files = fs.readdirSync(migrationsPath).filter(f => f.endsWith('.sql'))
+  const files = fs.readdirSync(migrationsPath).filter(f => f.endsWith('.sql')).sort()
   if (!files.length) throw new Error('No drizzle SQL migration file found')
 
-  let rawSql = fs.readFileSync(path.join(migrationsPath, files[0]!), 'utf-8')
-  // Strip drizzle-kit statement-breakpoint comments
-  rawSql = rawSql.replace(/--!?>.*?(\n|$)/g, '\n')
-  // SQLite does not accept bare `true`/`false` — replace with 1/0
-  rawSql = rawSql.replace(/DEFAULT\s+false/gi, 'DEFAULT 0')
-  rawSql = rawSql.replace(/DEFAULT\s+true/gi, 'DEFAULT 1')
-
   const sqlite = new Database(':memory:')
-  sqlite.exec(rawSql)
+
+  for (const file of files) {
+    let rawSql = fs.readFileSync(path.join(migrationsPath, file), 'utf-8')
+    // Strip drizzle-kit statement-breakpoint comments
+    rawSql = rawSql.replace(/--!?>.*?(\n|$)/g, '\n')
+    // SQLite does not accept bare `true`/`false` — replace with 1/0
+    rawSql = rawSql.replace(/DEFAULT\s+false/gi, 'DEFAULT 0')
+    rawSql = rawSql.replace(/DEFAULT\s+true/gi, 'DEFAULT 1')
+
+    sqlite.exec(rawSql)
+  }
+  
   return bsDrizzle(sqlite, { schema })
 }
 
@@ -55,6 +59,21 @@ export function getTestDb() {
 
 // Replace drizzle-orm/d1's `drizzle()` so that whenever src/db/index.ts calls
 // `drizzle(d1Binding, { schema })`, it silently returns our in-memory instance.
+// We also proxy `run` so makeTestSession can insert raw session rows.
 vi.mock('drizzle-orm/d1', () => ({
-  drizzle: (_d1: unknown, _opts: unknown) => currentDb,
+  drizzle: (_d1: unknown, _opts: unknown) => {
+    const proxyDb = new Proxy(currentDb, {
+      get(target, prop) {
+        if (prop === 'run') {
+          // Expose raw SQLite exec for test helpers that insert BA session rows
+          return (sql: string, params?: unknown[]) => {
+            const stmt = (target as any).session.client.prepare(sql)
+            return params ? stmt.run(...params) : stmt.run()
+          }
+        }
+        return (target as any)[prop]
+      },
+    })
+    return proxyDb
+  },
 }))

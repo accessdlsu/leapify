@@ -1,7 +1,7 @@
 import { test, expect, describe, beforeEach } from 'vitest'
 import { createTestApp } from './helpers/app'
 import { resetTestDb, getTestDb } from './helpers/setup'
-import { makeTestToken, seedUserInKV } from './helpers/auth'
+import { makeTestSession } from './helpers/auth'
 import { seedEvent, seedUser } from './helpers/seed'
 
 describe('Events API', () => {
@@ -17,20 +17,18 @@ describe('Events API', () => {
     const db = getTestDb()
 
     const adminUser = await seedUser(db, {
-      firebaseUid: 'admin-uid-1',
+      betterAuthId: 'admin-uid-1',
       email: 'admin@dlsu.edu.ph',
       role: 'admin',
     })
-    await seedUserInKV(kv, 'admin-uid-1', 'admin', adminUser.id)
-    adminToken = makeTestToken('admin-uid-1')
+    adminToken = await makeTestSession(db, kv, 'admin-uid-1', 'admin', adminUser.id)
 
     const studentUser = await seedUser(db, {
-      firebaseUid: 'user-uid-1',
+      betterAuthId: 'user-uid-1',
       email: 'student@dlsu.edu.ph',
       role: 'student',
     })
-    await seedUserInKV(kv, 'user-uid-1', 'student', studentUser.id)
-    userToken = makeTestToken('user-uid-1')
+    userToken = await makeTestSession(db, kv, 'user-uid-1', 'student', studentUser.id)
 
     await seedEvent(db, { slug: 'published-event', status: 'published' })
     await seedEvent(db, { slug: 'draft-event', status: 'draft' })
@@ -59,6 +57,8 @@ describe('Events API', () => {
 
   test('API-EVENTS-003: Draft event slug returns 404', async () => {
     const res = await app.request('/events/draft-event', { method: 'GET' }, env)
+    const text = await res.text()
+    console.log('API-EVENTS-003 RESPONSE HTML:', text)
     expect(res.status).toBe(404)
   })
 

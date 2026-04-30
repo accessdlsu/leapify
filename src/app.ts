@@ -9,6 +9,7 @@ import {
   POW_VERIFY_PATH,
 } from './lib/middleware/pow-challenge'
 import { serviceUnavailable } from './lib/errors'
+import { createAuth } from './auth/auth'
 import { healthRoute } from './routes/health'
 import { eventsRoute } from './routes/events'
 import { usersRoute } from './routes/users'
@@ -45,10 +46,21 @@ export function createApp(options: LeapifyAppOptions = {}): Hono<LeapifyEnv> {
   app.use('*', createPowChallengeMiddleware())
   app.use('*', createRefererGuard(options.allowedOrigins ?? ['*']))
 
+  // Better Auth HTTP handler — OAuth redirects, callbacks, session, token endpoints.
+  // Mounted BEFORE the maintenance check so auth is always reachable.
+  app.on(['POST', 'GET'], '/api/auth/*', (c) => {
+    const auth = createAuth(c.env)
+    return auth.handler(c.req.raw)
+  })
+
   // Maintenance mode check
   app.use('*', async (c, next) => {
-    // Skip for health and internal routes so operators can still access them
-    if (c.req.path === '/health' || c.req.path.startsWith('/internal')) {
+    // Skip for health, auth, and internal routes so operators can still access them
+    if (
+      c.req.path === '/health' ||
+      c.req.path.startsWith('/api/auth') ||
+      c.req.path.startsWith('/internal')
+    ) {
       return next()
     }
     // Read maintenance_mode flag from KV (set via PATCH /config/maintenance_mode).

@@ -8,6 +8,13 @@
       "when": 1774712457321,
       "tag": "0000_modern_the_stranger",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1746029000000,
+      "tag": "0001_better_auth",
+      "breakpoints": true
     }
   ]
 }

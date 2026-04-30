@@ -17,6 +17,7 @@ export default defineConfig([
     target: 'es2022',
     external: ['hono', '@cloudflare/workers-types'],
     outDir: 'dist',
+    tsconfig: 'tsconfig.build.json',
   },
 
   // ── standalone worker entry (ESM only — CF Workers require ESM) ─────────

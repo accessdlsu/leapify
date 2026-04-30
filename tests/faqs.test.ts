@@ -1,7 +1,7 @@
 import { test, expect, describe, beforeEach } from 'vitest'
 import { createTestApp } from './helpers/app'
 import { resetTestDb, getTestDb } from './helpers/setup'
-import { makeTestToken, seedUserInKV } from './helpers/auth'
+import { makeTestSession } from './helpers/auth'
 import { seedFaq, seedUser } from './helpers/seed'
 
 describe('FAQs API', () => {
@@ -17,12 +17,11 @@ describe('FAQs API', () => {
     const db = getTestDb()
 
     const adminUser = await seedUser(db, {
-      firebaseUid: 'admin-uid',
+      betterAuthId: 'admin-uid',
       email: 'admin@dlsu.edu.ph',
       role: 'admin',
     })
-    await seedUserInKV(kv, 'admin-uid', 'admin', adminUser.id)
-    adminToken = makeTestToken('admin-uid')
+    adminToken = await makeTestSession(db, kv, 'admin-uid', 'admin', adminUser.id)
 
     const activeFaq = await seedFaq(db, { question: 'Active Q', answer: 'A1', isActive: true })
     activeFaqId = activeFaq.id

@@ -1,165 +1,171 @@
-import { createMiddleware } from "hono/factory";
-import { eq } from "drizzle-orm";
-import { verifyFirebaseToken, fetchGoogleCerts, type GoogleCerts } from "./jwt";
-import { domainRestricted, unauthorized, forbidden } from "../lib/errors";
-import { createDb } from "../db";
-import { users } from "../db/schema/users";
-import type { LeapifyBindings } from "../types";
-import type { LeapifyUser } from "./types";
+import { createMiddleware } from 'hono/factory'
+import { eq } from 'drizzle-orm'
+import { createAuth } from './auth'
+import { domainRestricted, unauthorized, forbidden } from '../lib/errors'
+import { createDb } from '../db'
+import { users } from '../db/schema/users'
+import type { LeapifyBindings } from '../types'
+import type { LeapifyUser } from './types'
 
-const CERTS_KV_KEY = "auth:google-jwks"; // keyed separately from the old PEM cert cache
-const USER_KV_PREFIX = "auth:user:";
-const DLSU_DOMAIN = "@dlsu.edu.ph";
-const USER_KV_TTL = 3600; // 1 hour
+const SESSION_KV_PREFIX = 'auth:session:'
+const SESSION_KV_TTL = 3600 // 1 hour max cache (capped by actual session expiry)
 
-// Context type augmentation
-declare module "hono" {
+// Context type augmentation — available in every route handler via c.get('user')
+declare module 'hono' {
   interface ContextVariableMap {
-    user: LeapifyUser;
+    user: LeapifyUser
   }
 }
 
-// Auth middleware (required)
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Extract the raw bearer token from the Authorization header, or the
+ * `better-auth.session_token` cookie, for use as a KV cache key.
+ * Returns undefined when no credential is present.
+ */
+function extractRawToken(c: { req: { header: (k: string) => string | undefined } }): string | undefined {
+  const authHeader = c.req.header('Authorization')
+  if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7)
+  // Cookie-based flow: Better Auth sets this cookie name by default
+  const cookie = c.req.header('Cookie') ?? ''
+  const match = cookie.match(/(?:^|;\s*)better-auth\.session_token=([^;]+)/)
+  return match?.[1] ? decodeURIComponent(match[1]) : undefined
+}
+
+async function resolveUser(
+  env: LeapifyBindings,
+  betterAuthUserId: string,
+  betterAuthUserEmail: string,
+  betterAuthUserName: string,
+  betterAuthEmailVerified: boolean,
+): Promise<LeapifyUser> {
+  const db = createDb(env.DB)
+
+  let dbUser = await db.query.users.findFirst({
+    where: eq(users.betterAuthId, betterAuthUserId),
+  })
+
+  if (!dbUser) {
+    // First request after account creation — the databaseHooks.after callback
+    // should have already inserted this row, but guard against races.
+    const [created] = await db
+      .insert(users)
+      .values({
+        betterAuthId: betterAuthUserId,
+        email: betterAuthUserEmail,
+        name: betterAuthUserName ?? betterAuthUserEmail.split('@')[0],
+      })
+      .onConflictDoNothing({ target: users.betterAuthId })
+      .returning()
+    dbUser = created
+  }
+
+  if (!dbUser) throw unauthorized('Failed to resolve user record')
+
+  return {
+    uid: betterAuthUserId,
+    dbId: dbUser.id,
+    role: dbUser.role,
+    email: betterAuthUserEmail,
+    name: betterAuthUserName ?? betterAuthUserEmail.split('@')[0],
+    emailVerified: betterAuthEmailVerified,
+  }
+}
+
+// ─── Auth middleware (required) ───────────────────────────────────────────────
 
 export const authMiddleware = createMiddleware<{ Bindings: LeapifyBindings }>(
   async (c, next) => {
-    const authHeader = c.req.header("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      throw unauthorized("Missing or malformed Authorization header");
-    }
+    const rawToken = extractRawToken(c)
 
-    const token = authHeader.slice(7);
-    const { KV, DB, FIREBASE_PROJECT_ID } = c.env;
-
-    // Step 1: quick UID extract for KV cache check
-    let uid: string | undefined;
-    try {
-      const payloadB64 = token.split(".")[1];
-      if (payloadB64) {
-        const payload = JSON.parse(
-          atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/")),
-        ) as { sub?: string };
-        uid = payload.sub;
-      }
-    } catch {
-      // ignore — will fail at full verification below
-    }
-
-    // Step 2: KV cache hit → skip Firebase entirely
-    if (uid) {
-      const cached = await KV.get<LeapifyUser>(
-        `${USER_KV_PREFIX}${uid}`,
-        "json",
-      );
+    // Fast path: KV cache hit — skip DB round-trip entirely
+    if (rawToken) {
+      const cached = await c.env.KV.get<LeapifyUser>(
+        `${SESSION_KV_PREFIX}${rawToken}`,
+        'json',
+      )
       if (cached) {
-        c.set("user", cached);
-        return next();
+        c.set('user', cached)
+        return next()
       }
     }
 
-    // Step 3: verify JWT using Google's public certs
-    const getCerts = async () => {
-      const cached = await KV.get<GoogleCerts>(CERTS_KV_KEY, "json");
-      if (cached) return cached;
+    // Slow path: validate session via Better Auth
+    const auth = createAuth(c.env)
+    const session = await auth.api.getSession({ headers: c.req.raw.headers })
 
-      const { certs, ttl } = await fetchGoogleCerts();
-      await KV.put(CERTS_KV_KEY, JSON.stringify(certs), { expirationTtl: ttl });
-      return certs;
-    };
-
-    const claims = await verifyFirebaseToken(
-      token,
-      FIREBASE_PROJECT_ID,
-      getCerts,
-    );
-
-    // Step 4: enforce DLSU domain
-    // Firebase hd param handles the UX layer; this is the security layer.
-    if (!claims.email.endsWith(DLSU_DOMAIN)) {
-      throw domainRestricted();
+    if (!session?.user) {
+      throw unauthorized('No valid session found')
     }
 
-    // Step 5: upsert user in D1 and retrieve role
-    const db = createDb(DB);
-
-    let dbUser = await db.query.users.findFirst({
-      where: eq(users.firebaseUid, claims.sub),
-    });
-
-    if (!dbUser) {
-      const [created] = await db
-        .insert(users)
-        .values({
-          firebaseUid: claims.sub,
-          email: claims.email,
-          name: claims.name ?? claims.email.split("@")[0],
-        })
-        .returning();
-      dbUser = created;
+    // Domain guard — belt-and-suspenders (databaseHooks already rejects at
+    // account creation time, but protects in case an existing account somehow
+    // has a non-DLSU email)
+    if (!session.user.email.endsWith('@dlsu.edu.ph')) {
+      throw domainRestricted()
     }
 
-    if (!dbUser) throw unauthorized("Failed to resolve user");
+    const leapifyUser = await resolveUser(
+      c.env,
+      session.user.id,
+      session.user.email,
+      session.user.name,
+      session.user.emailVerified,
+    )
 
-    // Step 6: build LeapifyUser and cache in KV
-    const leapifyUser: LeapifyUser = {
-      ...claims,
-      uid: claims.sub,
-      dbId: dbUser.id,
-      role: dbUser.role,
-    };
-
-    const ttlRemaining = claims.exp - Math.floor(Date.now() / 1000);
-    const kvTtl = Math.min(ttlRemaining, USER_KV_TTL);
-    if (kvTtl > 0) {
-      await KV.put(
-        `${USER_KV_PREFIX}${claims.sub}`,
+    // Cache in KV, TTL = min(time until session expires, 1 hour)
+    if (rawToken) {
+      const sessionExpiresAt = new Date(session.session.expiresAt).getTime()
+      const secondsRemaining = Math.floor((sessionExpiresAt - Date.now()) / 1000)
+      const kvTtl = Math.max(1, Math.min(secondsRemaining, SESSION_KV_TTL))
+      await c.env.KV.put(
+        `${SESSION_KV_PREFIX}${rawToken}`,
         JSON.stringify(leapifyUser),
-        {
-          expirationTtl: kvTtl,
-        },
-      );
+        { expirationTtl: kvTtl },
+      )
     }
 
-    c.set("user", leapifyUser);
-    return next();
+    c.set('user', leapifyUser)
+    return next()
   },
-);
+)
 
-// Optional Auth middleware
+// ─── Optional auth middleware ─────────────────────────────────────────────────
 
 export const optionalAuthMiddleware = createMiddleware<{
-  Bindings: LeapifyBindings;
+  Bindings: LeapifyBindings
 }>(async (c, next) => {
-  const authHeader = c.req.header("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    // Safe casting for bypass
-    c.set("user", null as unknown as LeapifyUser);
-    return next();
+  const rawToken = extractRawToken(c)
+  // No credential present → treat as guest
+  if (!rawToken) {
+    c.set('user', null as unknown as LeapifyUser)
+    return next()
   }
-  // If header is present, enforce strict verification
-  return authMiddleware(c, next);
-});
+  // Credential present → enforce full verification
+  return authMiddleware(c, next)
+})
 
-// Admin guard (use after authMiddleware)
+// ─── Admin guard (use after authMiddleware) ───────────────────────────────────
 
 export const adminMiddleware = createMiddleware<{ Bindings: LeapifyBindings }>(
   async (c, next) => {
-    const user = c.get("user");
-    if (!user || !["admin", "super_admin"].includes(user.role)) {
-      throw forbidden("Admin access required");
+    const user = c.get('user')
+    if (!user || !['admin', 'super_admin'].includes(user.role)) {
+      throw forbidden('Admin access required')
     }
-    return next();
+    return next()
   },
-);
+)
 
-// Internal route guard
+// ─── Internal route guard ─────────────────────────────────────────────────────
 
 export const internalMiddleware = createMiddleware<{
-  Bindings: LeapifyBindings;
+  Bindings: LeapifyBindings
 }>(async (c, next) => {
-  const secret = c.req.header("X-Internal-Secret");
+  const secret = c.req.header('X-Internal-Secret')
   if (!secret || secret !== c.env.INTERNAL_API_SECRET) {
-    throw forbidden("Invalid internal secret");
+    throw forbidden('Invalid internal secret')
   }
-  return next();
-});
+  return next()
+})

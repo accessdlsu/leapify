@@ -4,12 +4,12 @@
  * Import from 'leapify/client' — no Cloudflare, Drizzle, or Hono dependencies.
  *
  * @example
- * import { createLeapifyClient, getLeapifyToken } from 'leapify/client'
- * import { auth } from '@/lib/firebase'
+ * import { createLeapifyClient, createLeapifyAuthClient, getLeapifyToken } from 'leapify/client'
  *
+ * const authClient = createLeapifyAuthClient(process.env.NEXT_PUBLIC_API_URL!)
  * const api = createLeapifyClient(
  *   process.env.NEXT_PUBLIC_API_URL!,
- *   () => getLeapifyToken(auth.currentUser),
+ *   () => getLeapifyToken(authClient),
  * )
  *
  * const events = await api.getEvents()
@@ -28,8 +28,13 @@ export type {
   EventStatus,
 } from "./types";
 
-export { getLeapifyToken } from "./auth";
-export type { FirebaseUserLike } from "./auth";
+export {
+  createLeapifyAuthClient,
+  signInWithGoogle,
+  getLeapifyToken,
+  signOut,
+} from "./auth";
+export type { LeapifyAuthClient } from "./auth";
 
 /**
  * Structured error thrown by all client methods on non-2xx responses.

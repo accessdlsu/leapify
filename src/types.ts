@@ -23,8 +23,14 @@ export interface LeapifyBindings {
   ALLOWED_ORIGINS?: string
 
   // Secrets (set via `wrangler secret put`)
-  FIREBASE_PROJECT_ID: string
-  FIREBASE_WEB_API_KEY?: string
+  BETTER_AUTH_SECRET: string
+  /**
+   * Public HTTPS base URL of this Worker, used by Better Auth for OAuth redirects.
+   * Example: "https://leap.yourdomain.com"
+   */
+  BETTER_AUTH_URL: string
+  GOOGLE_CLIENT_ID: string
+  GOOGLE_CLIENT_SECRET: string
   GFORMS_SERVICE_ACCOUNT_JSON: string
   GFORMS_WEBHOOK_SECRET: string
   CONTENTFUL_SPACE_ID?: string

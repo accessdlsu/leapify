@@ -5,7 +5,11 @@ export const users = sqliteTable('users', {
   id: text('id')
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID().replace(/-/g, '')),
-  firebaseUid: text('firebase_uid').notNull().unique(),
+  /**
+   * References Better Auth's `user.id`.
+   * Set on first login after the databaseHooks.user.create.after callback fires.
+   */
+  betterAuthId: text('better_auth_id').notNull().unique(),
   email: text('email').notNull().unique(),
   name: text('name').notNull(),
   role: text('role', { enum: ['student', 'admin', 'super_admin'] })

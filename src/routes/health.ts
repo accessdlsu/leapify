@@ -38,7 +38,7 @@ healthRoute.get('/', (c) => {
  * Internal load testing endpoint that blasts 100 mock items into the queue.
  */
 healthRoute.post('/queue-burst', async (c) => {
-  if (!c.env.leapify_email_queue) {
+  if (!c.env.EMAIL_QUEUE) {
     return c.json({ error: "Queue binding missing" }, 400);
   }
 
@@ -57,7 +57,7 @@ healthRoute.post('/queue-burst', async (c) => {
   }));
 
   // Typecast safely for Hono CF bindings
-  await (c.env.leapify_email_queue as any).sendBatch(batch);
+  await (c.env.EMAIL_QUEUE as any).sendBatch(batch);
 
   return c.json({ status: "queued", count: 100 });
 });

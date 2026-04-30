@@ -24,7 +24,7 @@ export async function seedEvent(db: any, overrides: Record<string, any> = {}) {
 
 export async function seedUser(db: any, overrides: Record<string, any> = {}) {
   const [user] = await db.insert(users).values({
-    firebaseUid: `firebase-${shortId()}`,
+    betterAuthId: `ba-${shortId()}`,
     email: `user-${shortId(6)}@dlsu.edu.ph`,
     name: 'Test User',
     role: 'student',

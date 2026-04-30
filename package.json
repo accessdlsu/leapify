@@ -1,6 +1,6 @@
 {
   "name": "leapify",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "DLSU CSO LEAP backend — run as a standalone Cloudflare Worker or install as an npm module",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -53,11 +53,17 @@
       "ALLOWED_ORIGINS": {
         "description": "Comma-separated allowed origins (e.g., https://yoursite.com). Leave empty to block all cross-origin requests."
       },
-      "FIREBASE_PROJECT_ID": {
-        "description": "Firebase Project ID for authentication."
+      "BETTER_AUTH_SECRET": {
+        "description": "Better Auth signing secret. Generate with: openssl rand -base64 32"
       },
-      "FIREBASE_WEB_API_KEY": {
-        "description": "Firebase Web API Key."
+      "BETTER_AUTH_URL": {
+        "description": "Public HTTPS base URL of this Worker (e.g. https://leap.yourdomain.com). Used for OAuth redirects."
+      },
+      "GOOGLE_CLIENT_ID": {
+        "description": "Google OAuth 2.0 Client ID from Google Cloud Console."
+      },
+      "GOOGLE_CLIENT_SECRET": {
+        "description": "Google OAuth 2.0 Client Secret from Google Cloud Console."
       },
       "GFORMS_SERVICE_ACCOUNT_JSON": {
         "description": "Google Forms Service Account JSON."
@@ -112,6 +118,7 @@
   },
   "dependencies": {
     "@hono/zod-validator": "^0.7.6",
+    "better-auth": "^1.6.9",
     "wrangler": "^4.80.0",
     "zod": "^4.3.6"
   },

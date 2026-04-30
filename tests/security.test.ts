@@ -1,7 +1,7 @@
 import { test, expect, describe, beforeEach } from 'vitest'
 import { createTestApp } from './helpers/app'
 import { resetTestDb, getTestDb } from './helpers/setup'
-import { makeTestToken, seedUserInKV } from './helpers/auth'
+import { makeTestSession } from './helpers/auth'
 import { seedUser } from './helpers/seed'
 
 describe('Security Boundaries (CORS, Roles, Domains)', () => {
@@ -50,26 +50,14 @@ describe('Security Boundaries (CORS, Roles, Domains)', () => {
   describe('Domain & Role Verification', () => {
     const { app, env, kv } = createTestApp()
 
-    test('SEC-AUTH-001: Rejects valid Google JWT with non-DLSU email', async () => {
-      // Generate a structurally valid token but with an @gmail.com email
-      // Our makeTestToken helper can be tricked by appending query arguments but it defaults to @dlsu.edu.ph
-      // Wait, let's manually mock the JWT parsing failure or insert a fake kv cache directly!
-      
-      // The easiest way to test this without hacking the JWT signing is to simulate 
-      // the JWT verification returning an email that fails the .endsWith("@dlsu.edu.ph") check.
-      // However, since we mock Firebase natively via the KV cache seed (Step 2), 
-      // let's seed a non-DLSU email directly into the cache. Wait! The middleware 
-      // parses the email during Step 3, not Step 2. If it's already in KV, it skips Step 4.
-      
-      // Let's seed a user to simulate an already logged-in session, but they have a malicious role.
+    test('SEC-AUTH-001: Student cannot modify Site Config — 403 Forbidden', async () => {
       const db = getTestDb()
       const studentUser = await seedUser(db, {
-        firebaseUid: 'student-guy',
+        betterAuthId: 'student-guy',
         email: 'student@dlsu.edu.ph',
         role: 'student',
       })
-      await seedUserInKV(kv, 'student-guy', 'student', studentUser.id)
-      const studentToken = makeTestToken('student-guy')
+      const studentToken = await makeTestSession(db, kv, 'student-guy', 'student', studentUser.id)
 
       // A student tries to perform an admin capability: modifying Site Configurations
       const res = await app.request('/config/maintenance_mode', {
@@ -90,12 +78,11 @@ describe('Security Boundaries (CORS, Roles, Domains)', () => {
     test('SEC-AUTH-002: Allows Admin role to bypass Guard', async () => {
       const db = getTestDb()
       const adminUser = await seedUser(db, {
-        firebaseUid: 'admin-guy',
+        betterAuthId: 'admin-guy',
         email: 'admin@dlsu.edu.ph',
         role: 'admin',
       })
-      await seedUserInKV(kv, 'admin-guy', 'admin', adminUser.id)
-      const adminToken = makeTestToken('admin-guy')
+      const adminToken = await makeTestSession(db, kv, 'admin-guy', 'admin', adminUser.id)
 
       const res = await app.request('/config/maintenance_mode', {
         method: 'PATCH',

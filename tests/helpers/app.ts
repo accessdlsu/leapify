@@ -70,10 +70,14 @@ export function createTestApp(options?: { allowedOrigins?: string[] }) {
     KV: kv as any,
     QUEUE: createMockQueue() as any,
     RESEND_API_KEY: "test-resend-key",
-    FIREBASE_PROJECT_ID: "test-project",
+    BETTER_AUTH_SECRET: "test-secret-do-not-use-in-production",
+    BETTER_AUTH_URL: "http://localhost:8787",
+    GOOGLE_CLIENT_ID: "test-google-client-id",
+    GOOGLE_CLIENT_SECRET: "test-google-client-secret",
     GFORMS_SERVICE_ACCOUNT_JSON: "{}",
     INTERNAL_API_SECRET: "secret",
   };
+
 
   const app = createApp({ allowedOrigins: options?.allowedOrigins ?? ["*"] });
 

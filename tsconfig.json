@@ -4,7 +4,6 @@
     "lib": ["ESNext", "DOM"],
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "ignoreDeprecations": "6.0",
     "types": ["@cloudflare/workers-types"],
     "strict": true,
     "skipLibCheck": true,

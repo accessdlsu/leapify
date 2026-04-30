@@ -1,64 +1,68 @@
+import { randomUUID } from 'node:crypto'
 import type { LeapifyUser } from '../../src/auth/types'
 
-const USER_KV_PREFIX = 'auth:user:'
+const SESSION_KV_PREFIX = 'auth:session:'
 
 /**
- * Build a fake token that LOOKS like a real Firebase JWT to the middleware.
+ * Insert a real Better Auth `session` row into the in-memory SQLite DB
+ * and cache the corresponding `LeapifyUser` in the mock KV so the
+ * `authMiddleware` fast-path hits without ever calling Better Auth's
+ * `getSession()`.
  *
- * Root-cause: The middleware extracts the UID with a quick base64url decode
- * of the token payload (part[1]) before doing the KV cache check.  If the
- * token isn't a 3-part "header.payload.signature" string, `split('.')[1]`
- * is undefined, `uid` stays undefined, the KV lookup is skipped, and the
- * full `verifyFirebaseToken()` path runs — which rejects our fake string.
+ * How the middleware works:
+ *  1. extractRawToken() reads `Authorization: Bearer <token>`
+ *  2. KV.get(`auth:session:<token>`, 'json') → if hit, short-circuit ✓
+ *  3. Only on miss: calls auth.api.getSession() → queries the `session` table
  *
- * Fix: We encode a minimal payload containing `sub` so the UID extraction
- * succeeds, then we pre-seed the KV with the full `LeapifyUser` object
- * under that UID key.  The middleware finds the cache hit and short-circuits
- * WITHOUT ever calling verifyFirebaseToken.
+ * By seeding BOTH the KV cache (step 2) AND the session table (step 3 fallback)
+ * we cover both code paths in tests.
+ *
+ * @returns The opaque session token string to use as `Authorization: Bearer <token>`
  */
-export function makeTestToken(uid: string): string {
-  const header  = btoa(JSON.stringify({ alg: 'RS256', kid: 'test-kid' }))
-    .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
-  const payload = btoa(JSON.stringify({
-    sub: uid,
-    iss: 'https://securetoken.google.com/test-project',
-    aud: 'test-project',
-    iat: Math.floor(Date.now() / 1000) - 60,
-    exp: Math.floor(Date.now() / 1000) + 3600,
-    email: `${uid}@dlsu.edu.ph`,
-    email_verified: true,
-  }))
-    .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
-  // Signature is arbitrary; it never gets verified because the KV hits first
-  const sig = 'fakesig'
-  return `${header}.${payload}.${sig}`
-}
+import { authUser, authSession } from '../../src/db/schema/auth'
 
-/**
- * Pre-seed the mock KV namespace with a cached LeapifyUser for the given UID.
- * When the middleware does `KV.get('auth:user:<uid>', 'json')` it will find
- * this object and skip Firebase verification entirely.
- */
-export async function seedUserInKV(
+export async function makeTestSession(
+  db: any,
   kv: any,
   uid: string,
   role: LeapifyUser['role'],
   dbId: string,
-): Promise<LeapifyUser> {
+): Promise<string> {
+  const token = randomUUID()
+  const now = new Date()
+  const expiresAt = new Date(Date.now() + 3600 * 1000) // 1 hour from now
+
+  // Insert a Better Auth `session` row so auth.api.getSession() can find it
+  // if the KV cache were to miss (e.g. after a KV reset in tests).
+  // The `user_id` must exist in the `user` table — insert a minimal row first.
+  await db.insert(authUser).values({
+    id: uid,
+    name: role === 'admin' ? 'Test Admin' : 'Test Student',
+    email: `${uid}@dlsu.edu.ph`,
+    emailVerified: true,
+    createdAt: now,
+    updatedAt: now,
+  }).onConflictDoNothing()
+
+  await db.insert(authSession).values({
+    id: randomUUID(),
+    expiresAt,
+    token,
+    userId: uid,
+    createdAt: now,
+    updatedAt: now,
+  }).onConflictDoNothing()
+
+  // Pre-seed KV so the middleware fast-path hits on every test request
   const leapifyUser: LeapifyUser = {
     uid,
-    sub: uid,
     dbId,
     role,
-    iss: 'https://securetoken.google.com/test-project',
-    aud: 'test-project',
-    iat: Math.floor(Date.now() / 1000) - 60,
-    exp: Math.floor(Date.now() / 1000) + 3600,
     email: `${uid}@dlsu.edu.ph`,
-    email_verified: true,
     name: role === 'admin' ? 'Test Admin' : 'Test Student',
+    emailVerified: true,
   }
-  // Store as JSON string so the mock KV can return it parsed on get(..., 'json')
-  await kv.put(`${USER_KV_PREFIX}${uid}`, JSON.stringify(leapifyUser))
-  return leapifyUser
+  await kv.put(`${SESSION_KV_PREFIX}${token}`, JSON.stringify(leapifyUser))
+
+  return token
 }
