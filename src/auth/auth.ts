@@ -2,6 +2,7 @@ import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { bearer } from 'better-auth/plugins'
 import { createDb } from '../db'
+import { authUser, authSession, authAccount, authVerification } from '../db/schema/auth'
 import { users } from '../db/schema/users'
 import type { LeapifyBindings } from '../types'
 
@@ -28,7 +29,15 @@ export function createAuth(env: LeapifyBindings) {
     baseURL: env.BETTER_AUTH_URL,
     secret: env.BETTER_AUTH_SECRET,
 
-    database: drizzleAdapter(db, { provider: 'sqlite' }),
+    database: drizzleAdapter(db, {
+      provider: 'sqlite',
+      schema: {
+        user: authUser,
+        session: authSession,
+        account: authAccount,
+        verification: authVerification,
+      },
+    }),
 
     plugins: [bearer()],
 
