@@ -3,6 +3,9 @@ import type { LeapifyEnv, SiteConfigKey, SiteConfigMap } from "../types";
 import { createDb } from "../db";
 import { siteConfig } from "../db/schema/site-config";
 import { authMiddleware, adminMiddleware } from "../auth/middleware";
+import { ContentfulManagement } from "../services/contentful-management";
+import { ensureContentTypes, pushToContentful } from "../services/snapshot";
+import { serviceUnavailable } from "../lib/errors";
 
 export const siteConfigRoute = new Hono<LeapifyEnv>();
 
@@ -51,4 +54,28 @@ siteConfigRoute.patch("/:key", authMiddleware, adminMiddleware, async (c) => {
   });
 
   return c.json({ data: { key, value } });
+});
+
+// POST /config/sync-content — admin only
+// Auto-generates content types in Contentful if missing, then pushes all D1 content.
+siteConfigRoute.post("/sync-content", authMiddleware, adminMiddleware, async (c) => {
+  if (!ContentfulManagement.isConfigured(c.env.CONTENTFUL_SPACE_ID, c.env.CONTENTFUL_MANAGEMENT_TOKEN)) {
+    throw serviceUnavailable('Contentful Management API credentials not configured.')
+  }
+
+  const mgmt = new ContentfulManagement(
+    c.env.CONTENTFUL_SPACE_ID!,
+    c.env.CONTENTFUL_MANAGEMENT_TOKEN!,
+    c.env.CONTENTFUL_ENVIRONMENT,
+  )
+
+  const db = createDb(c.env.DB)
+
+  // Auto-generate content types if they don't exist
+  await ensureContentTypes(mgmt, {})
+
+  // Push all D1 content to Contentful
+  const result = await pushToContentful(db, mgmt, {})
+
+  return c.json({ data: result })
 });

@@ -35,6 +35,7 @@ export interface LeapifyBindings {
   GFORMS_WEBHOOK_SECRET: string
   CONTENTFUL_SPACE_ID?: string
   CONTENTFUL_ACCESS_TOKEN?: string
+  CONTENTFUL_MANAGEMENT_TOKEN?: string
   CONTENTFUL_ENVIRONMENT?: string
   // Email — Amazon SES (primary/optional)
   SES_REGION?: string

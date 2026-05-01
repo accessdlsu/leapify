@@ -21,6 +21,7 @@ export type {
   UserProfile,
   BookmarkEntry,
   Faq,
+  Theme,
   SiteConfig,
   ToggleBookmarkResult,
   LeapifyErrorBody,
@@ -84,6 +85,7 @@ import type {
   UserProfile,
   BookmarkEntry,
   Faq,
+  Theme,
   SiteConfig,
   ToggleBookmarkResult,
   LeapifyErrorBody,
@@ -221,6 +223,37 @@ export function createLeapifyClient(baseUrl: string, getToken?: GetTokenFn) {
      */
     getSlots(slug: string): Promise<SlotInfo> {
       return get<SlotInfo>(`/events/${encodeURIComponent(slug)}/slots`);
+    },
+
+    // ── Themes ─────────────────────────────────────────────────────────────
+
+    /**
+     * GET /themes
+     * Returns all themes.
+     */
+    getThemes(): Promise<Theme[]> {
+      return get<Theme[]>("/themes");
+    },
+
+    /**
+     * POST /themes — admin only.
+     */
+    createTheme(data: Omit<Theme, "id" | "createdAt">): Promise<Theme> {
+      return post<Theme>("/themes", data);
+    },
+
+    /**
+     * PATCH /themes/:id — admin only.
+     */
+    updateTheme(id: string, data: Partial<Omit<Theme, "id" | "createdAt">>): Promise<Theme> {
+      return patch<Theme>(`/themes/${encodeURIComponent(id)}`, data);
+    },
+
+    /**
+     * DELETE /themes/:id — admin only.
+     */
+    deleteTheme(id: string): Promise<void> {
+      return del<void>(`/themes/${encodeURIComponent(id)}`);
     },
 
     // ── Users ──────────────────────────────────────────────────────────────

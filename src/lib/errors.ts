@@ -25,6 +25,9 @@ export const forbidden = (message = 'Forbidden') =>
 export const notFound = (resource = 'Resource') =>
   new LeapifyError(404, 'NOT_FOUND', `${resource} not found`)
 
+export const badRequest = (message = 'Bad request') =>
+  new LeapifyError(400, 'BAD_REQUEST', message)
+
 export const conflict = (message = 'Conflict') =>
   new LeapifyError(409, 'CONFLICT', message)
 

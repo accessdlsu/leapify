@@ -21,9 +21,7 @@ const EVENTS_ETAG_KV_KEY = 'events:etag'
 const EVENTS_LIST_TTL = 300 // 5 min KV cache for list
 
 const createEventSchema = z.object({
-  slug: z.string().min(1).max(100),
-  categoryName: z.string().min(1),
-  categoryPath: z.string().min(1),
+  themeId: z.string().min(1),
   title: z.string().min(1),
   org: z.string().optional(),
   venue: z.string().optional(),
@@ -46,6 +44,15 @@ const createEventSchema = z.object({
 })
 
 export const eventsRoute = new Hono<LeapifyEnv>()
+
+function generateSlug(title: string): string {
+  return title
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
 
 // GET /events — public, ETag + 7-day browser cache
 eventsRoute.get('/', eventsListRateLimit, async (c) => {
@@ -76,11 +83,13 @@ eventsRoute.get('/', eventsListRateLimit, async (c) => {
     () =>
       db.query.events.findMany({
         where: eq(events.status, 'published'),
+        with: {
+          theme: true,
+        },
         columns: {
           id: true,
           slug: true,
-          categoryName: true,
-          categoryPath: true,
+          themeId: true,
           title: true,
           org: true,
           venue: true,
@@ -118,6 +127,9 @@ eventsRoute.get('/:slug', async (c) => {
 
   const event = await db.query.events.findFirst({
     where: and(eq(events.slug, slug), eq(events.status, 'published')),
+    with: {
+      theme: true,
+    },
   })
 
   if (!event) throw notFound('Event')
@@ -153,7 +165,9 @@ eventsRoute.post(
     const db = createDb(c.env.DB)
     const cache = new CacheService(c.env.KV)
 
-    const [created] = await db.insert(events).values(body).returning()
+    const slug = generateSlug(body.title)
+
+    const [created] = await db.insert(events).values({ ...body, slug }).returning()
 
     // If publishing immediately, create a Google Forms Watch
     if (
@@ -200,9 +214,14 @@ eventsRoute.patch('/:slug', authMiddleware, adminMiddleware, async (c) => {
   const db = createDb(c.env.DB)
   const cache = new CacheService(c.env.KV)
 
+  let newSlug: string | undefined
+  if (body.title) {
+    newSlug = generateSlug(body.title)
+  }
+
   const [updated] = await db
     .update(events)
-    .set(body)
+    .set(newSlug ? { ...body, slug: newSlug } : body)
     .where(eq(events.slug, slug))
     .returning()
 

@@ -6,6 +6,8 @@ import { events } from '../db/schema/events'
 import { createEmailRouter, type EmailRouter } from '../services/email'
 import { buildReminderEmail } from '../services/resend'
 import { GFormsService } from '../services/gforms'
+import { ContentfulManagement } from '../services/contentful-management'
+import { ensureContentTypes, pushToContentful } from '../services/snapshot'
 
 /**
  * CF Queue consumer handler.
@@ -24,7 +26,7 @@ export function createQueueHandler(env: LeapifyBindings) {
 
     for (const message of batch.messages) {
       try {
-        await processJob(message.body, { db, email, gforms })
+        await processJob(message.body, { db, email, gforms, env })
         message.ack()
       } catch (err) {
         console.error(`[Queue] Failed to process job ${message.body.type}:`, err)
@@ -40,9 +42,10 @@ async function processJob(
     db: ReturnType<typeof createDb>
     email: EmailRouter | null
     gforms: GFormsService
+    env: LeapifyBindings
   },
 ): Promise<void> {
-  const { db, email, gforms } = services
+  const { db, email, gforms, env } = services
 
   switch (job.type) {
     case 'send_email': {
@@ -122,8 +125,22 @@ async function processJob(
 
     case 'snapshot_content': {
       console.log('[Snapshot] Content snapshot triggered at', job.payload.triggeredAt)
-      // Contentful → D1 snapshot logic lives in services/snapshot.ts
-      // Future: import and call snapshotAllContent(db, contentful)
+
+      if (!ContentfulManagement.isConfigured(env.CONTENTFUL_SPACE_ID, env.CONTENTFUL_MANAGEMENT_TOKEN)) {
+        console.warn('[Snapshot] Contentful Management API credentials not configured — skipping')
+        break
+      }
+
+      const mgmt = new ContentfulManagement(
+        env.CONTENTFUL_SPACE_ID!,
+        env.CONTENTFUL_MANAGEMENT_TOKEN!,
+        env.CONTENTFUL_ENVIRONMENT,
+      )
+
+      // Auto-generate content types, then push D1 → Contentful
+      await ensureContentTypes(mgmt, {})
+      const result = await pushToContentful(db, mgmt, {})
+      console.log('[Snapshot] Result:', JSON.stringify(result))
       break
     }
   }

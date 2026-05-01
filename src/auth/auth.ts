@@ -1,8 +1,14 @@
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { bearer } from 'better-auth/plugins'
+import { count } from 'drizzle-orm'
 import { createDb } from '../db'
-import { authUser, authSession, authAccount, authVerification } from '../db/schema/auth'
+import {
+  authUser,
+  authSession,
+  authAccount,
+  authVerification
+} from '../db/schema/auth'
 import { users } from '../db/schema/users'
 import type { LeapifyBindings } from '../types'
 
@@ -35,8 +41,8 @@ export function createAuth(env: LeapifyBindings) {
         user: authUser,
         session: authSession,
         account: authAccount,
-        verification: authVerification,
-      },
+        verification: authVerification
+      }
     }),
 
     plugins: [bearer()],
@@ -44,8 +50,8 @@ export function createAuth(env: LeapifyBindings) {
     socialProviders: {
       google: {
         clientId: env.GOOGLE_CLIENT_ID,
-        clientSecret: env.GOOGLE_CLIENT_SECRET,
-      },
+        clientSecret: env.GOOGLE_CLIENT_SECRET
+      }
     },
 
     databaseHooks: {
@@ -58,7 +64,9 @@ export function createAuth(env: LeapifyBindings) {
           before: async (user) => {
             if (!user.email.endsWith(DLSU_DOMAIN)) {
               // Throwing here causes Better Auth to return 403 to the client
-              throw new Error('DOMAIN_RESTRICTED: only @dlsu.edu.ph accounts are allowed')
+              throw new Error(
+                'DOMAIN_RESTRICTED: only @dlsu.edu.ph accounts are allowed'
+              )
             }
             return { data: user }
           },
@@ -67,20 +75,26 @@ export function createAuth(env: LeapifyBindings) {
            * Runs after the Better Auth `user` row is created.
            * Upsert a matching row in our application `users` table so that
            * the role column and D1 foreign keys are always consistent.
+           *
+           * The very first user to sign in is automatically promoted to
+           * `super_admin` so the platform has an administrator from day one.
            */
           after: async (user) => {
+            const [{ total }] = await db.select({ total: count() }).from(users)
+
             await db
               .insert(users)
               .values({
                 betterAuthId: user.id,
                 email: user.email,
                 name: user.name ?? user.email.split('@')[0],
+                role: total === 0 ? 'super_admin' : 'student'
               })
               .onConflictDoNothing({ target: users.betterAuthId })
-          },
-        },
-      },
-    },
+          }
+        }
+      }
+    }
   })
 }
 

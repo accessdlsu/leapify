@@ -8,7 +8,17 @@ export type EventStatus = "draft" | "queued" | "published" | "ended" | "cancelle
 export type UserRole = "student" | "admin" | "super_admin";
 
 /**
- * A published event as returned by GET /events and GET /events/:slug.
+ * A theme categorization for events.
+ */
+export interface Theme {
+  id: string;
+  name: string;
+  path: string;
+  color: string | null;
+  createdAt: number;
+}
+
+/**
  *
  * Note: The list endpoint (GET /events) returns a subset of fields for
  * performance — internal fields like gformsId, watchId, and reminder flags
@@ -18,8 +28,13 @@ export type UserRole = "student" | "admin" | "super_admin";
 export interface LeapEvent {
   id: string;
   slug: string;
-  categoryName: string;
-  categoryPath: string;
+  themeId: string | null;
+  theme: {
+    id: string;
+    name: string;
+    path: string;
+    color: string | null;
+  } | null;
   title: string;
   org: string | null;
   venue: string | null;

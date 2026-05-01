@@ -16,6 +16,8 @@ import { usersRoute } from './routes/users'
 import { siteConfigRoute } from './routes/site-config'
 import { faqsRoute } from './routes/faqs'
 import { gformsWebhookRoute } from './routes/internal/gforms-webhook'
+import { uploadsRoute } from './routes/uploads'
+import { themesRoute } from './routes/themes'
 
 export interface LeapifyAppOptions {
   allowedOrigins?: string[]
@@ -79,8 +81,10 @@ export function createApp(options: LeapifyAppOptions = {}): Hono<LeapifyEnv> {
   app.route('/health', healthRoute)
   app.route('/config', siteConfigRoute)
   app.route('/events', eventsRoute)
+  app.route('/themes', themesRoute)
   app.route('/users', usersRoute)
   app.route('/faqs', faqsRoute)
+  app.route('/uploads', uploadsRoute)
   app.route('/internal/gforms-webhook', gformsWebhookRoute)
 
   // Error handler

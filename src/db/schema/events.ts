@@ -1,5 +1,6 @@
 import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
-import { sql } from "drizzle-orm";
+import { sql, relations } from "drizzle-orm";
+import { themes } from "./themes";
 
 export const events = sqliteTable(
   "events",
@@ -8,10 +9,8 @@ export const events = sqliteTable(
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID().replace(/-/g, "")),
     slug: text("slug").notNull().unique(),
-
-    // Category (maps to CategoryData)
-    categoryName: text("category_name").notNull(), // e.g. "Pirates Cove"
-    categoryPath: text("category_path").notNull(), // e.g. "/pirates-cove"
+    // Theme reference
+    themeId: text("theme_id").references(() => themes.id),
 
     // Core event fields (maps to LinkData)
     title: text("title").notNull(),
@@ -68,10 +67,17 @@ export const events = sqliteTable(
       table.status,
       table.releaseAt,
     ),
-    categoryIdx: index("idx_events_category").on(table.categoryName),
+    themeIdx: index("idx_events_theme_id").on(table.themeId),
     slugIdx: index("idx_events_slug").on(table.slug),
   }),
 );
+
+export const eventsRelations = relations(events, ({ one }) => ({
+  theme: one(themes, {
+    fields: [events.themeId],
+    references: [themes.id],
+  }),
+}));
 
 export type Event = typeof events.$inferSelect;
 export type NewEvent = typeof events.$inferInsert;
