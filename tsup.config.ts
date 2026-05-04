@@ -6,6 +6,7 @@ export default defineConfig([
     entry: [
       'src/index.ts',
       'src/client/index.ts',
+      'src/client/types.ts',
       'src/lib/middleware/pow-challenge.ts',
     ],
     format: ['esm', 'cjs'],

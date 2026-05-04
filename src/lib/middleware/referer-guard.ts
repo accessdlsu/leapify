@@ -17,7 +17,7 @@ import { forbidden } from '../errors'
  */
 export function createRefererGuard(allowedOrigins: string[]) {
   const MUTATION_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE'])
-  const SKIP_PREFIXES = ['/health', '/internal']
+  const SKIP_PREFIXES = ['/health', '/internal', '/api/auth', '/.well-known']
 
   return createMiddleware<{ Bindings: LeapifyBindings }>(async (c, next) => {
     // Only check mutation methods

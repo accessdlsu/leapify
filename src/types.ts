@@ -2,7 +2,7 @@ import type {
   D1Database,
   KVNamespace,
   R2Bucket,
-  Queue,
+  Queue
 } from '@cloudflare/workers-types'
 
 /**
@@ -31,6 +31,8 @@ export interface LeapifyBindings {
   BETTER_AUTH_URL: string
   GOOGLE_CLIENT_ID: string
   GOOGLE_CLIENT_SECRET: string
+  /** Optional Google Workspace hosted domain (e.g. "dlsu.edu.ph"). Restricts the OAuth account picker to this domain. */
+  GOOGLE_HD?: string
   GFORMS_SERVICE_ACCOUNT_JSON: string
   GFORMS_WEBHOOK_SECRET: string
   CONTENTFUL_SPACE_ID?: string

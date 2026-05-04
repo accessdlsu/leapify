@@ -8,20 +8,17 @@
  *
  * @example
  * // lib/auth.ts (frontend)
- * import { createLeapifyAuthClient, signInWithGoogle } from 'leapify/client'
+ * import { createLeapifyAuthClient, signInWithGoogleRedirect } from 'leapify/client'
  *
  * export const authClient = createLeapifyAuthClient(process.env.NEXT_PUBLIC_API_URL!)
  *
- * // When GIS gives you a credential string:
- * google.accounts.id.initialize({
- *   client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!,
- *   callback: async ({ credential }) => {
- *     await signInWithGoogle(authClient, credential)
- *   },
- * })
+ * // Redirect-based Google sign-in:
+ * await signInWithGoogleRedirect(authClient, '/dashboard')
  */
 
 import { createAuthClient } from 'better-auth/client'
+
+const AUTH_TOKEN_KEY = 'better-auth.session_token'
 
 /**
  * Create a Better Auth client bound to the Leapify Worker URL.
@@ -37,7 +34,7 @@ export function createLeapifyAuthClient(baseUrl: string) {
         type: 'Bearer',
         token: () => {
           if (typeof window !== 'undefined') {
-            return localStorage.getItem('better-auth.session_token') || ''
+            return localStorage.getItem(AUTH_TOKEN_KEY) || ''
           }
           return ''
         }
@@ -49,38 +46,67 @@ export function createLeapifyAuthClient(baseUrl: string) {
 export type LeapifyAuthClient = ReturnType<typeof createLeapifyAuthClient>
 
 /**
- * Sign in with a Google Identity Services (GIS) credential string.
+ * Sign in with Google via OAuth redirect flow.
  *
- * Pass the `credential` from the GIS callback directly — Better Auth's
- * Google provider verifies the ID token server-side via Google's JWKS.
+ * Redirects the browser to Google's OAuth page. After authentication,
+ * Google redirects back to the Better Auth callback endpoint, which
+ * creates a session and redirects to `callbackURL`.
+ *
+ * Call `syncCookieSessionToStorage()` on app init to restore the
+ * session from the cookie after a redirect-based sign-in.
  *
  * @param authClient - Client created by createLeapifyAuthClient
- * @param credential - The credential string from google.accounts.id callback
+ * @param callbackURL - Path or URL to redirect to after successful auth (e.g. '/dashboard')
  *
  * @example
- * google.accounts.id.initialize({
- *   client_id: GOOGLE_CLIENT_ID,
- *   callback: async ({ credential }) => {
- *     const result = await signInWithGoogle(authClient, credential)
- *     if (result.error) console.error(result.error)
- *   },
- * })
+ * import { signInWithGoogleRedirect } from 'leapify/client'
+ *
+ * document.getElementById('google-btn').onclick = () => {
+ *   signInWithGoogleRedirect(authClient, '/dashboard')
+ * }
  */
-export async function signInWithGoogle(
+export async function signInWithGoogleRedirect(
   authClient: LeapifyAuthClient,
-  credential: string,
-) {
-  return authClient.signIn.social({
+  callbackURL: string,
+): Promise<void> {
+  await authClient.signIn.social({
     provider: 'google',
-    idToken: { token: credential },
-  }, {
-    onSuccess: (ctx) => {
-      const authToken = ctx.response.headers.get("set-auth-token")
-      if (authToken && typeof window !== 'undefined') {
-        localStorage.setItem('better-auth.session_token', authToken)
-      }
-    }
+    callbackURL,
   })
+}
+
+/**
+ * Sync a cookie-based Better Auth session into localStorage.
+ *
+ * After an OAuth redirect flow, Better Auth stores the session in an
+ * HTTP-only cookie. This function reads that session via `getSession()`
+ * and stores the token in localStorage so that subsequent API calls
+ * using the Bearer token work correctly.
+ *
+ * Call this once on app initialization, before `initializeSession()`.
+ *
+ * @param authClient - Client created by createLeapifyAuthClient
+ *
+ * @example
+ * import { syncCookieSessionToStorage, initializeSession } from 'leapify/client'
+ *
+ * // On app mount:
+ * await syncCookieSessionToStorage(authClient)
+ * const user = await initializeSession(API_URL, getToken)
+ */
+export async function syncCookieSessionToStorage(
+  authClient: LeapifyAuthClient,
+): Promise<void> {
+  try {
+    const result = await authClient.getSession()
+    const data = result?.data as { session?: { token?: string } } | undefined
+    const token = data?.session?.token
+    if (token) {
+      localStorage.setItem(AUTH_TOKEN_KEY, token)
+    }
+  } catch {
+    // No cookie session — user is a guest.
+  }
 }
 
 /**
@@ -99,7 +125,7 @@ export async function getLeapifyToken(
   authClient?: LeapifyAuthClient,
 ): Promise<string | null> {
   if (typeof window !== 'undefined') {
-    return localStorage.getItem('better-auth.session_token')
+    return localStorage.getItem(AUTH_TOKEN_KEY)
   }
   return null
 }
@@ -110,7 +136,7 @@ export async function getLeapifyToken(
 export async function signOut(authClient: LeapifyAuthClient) {
   const result = await authClient.signOut()
   if (typeof window !== 'undefined') {
-    localStorage.removeItem('better-auth.session_token')
+    localStorage.removeItem(AUTH_TOKEN_KEY)
   }
   return result
 }

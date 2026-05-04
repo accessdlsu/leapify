@@ -35,10 +35,25 @@ import { reconcileSlots } from "./cron/reconcile-slots";
 import { reminderEmails } from "./cron/reminder-emails";
 import { lifecycleCheck } from "./cron/lifecycle-check";
 import { renewWatches } from "./cron/renew-watches";
+import { ensureDatabase } from "./db/migrate";
 import type { LeapifyBindings } from "./types";
 import type { LeapifyJob } from "./queues/jobs";
 
-export interface LeapifyOptions extends LeapifyAppOptions {}
+export interface LeapifyOptions extends LeapifyAppOptions {
+  /**
+   * Automatically run Drizzle migrations on first request.
+   * Safe for production — idempotent (only applies pending migrations).
+   * Requires the /drizzle migrations folder to be accessible at runtime.
+   * @default false
+   */
+  autoMigrate?: boolean;
+  /**
+   * Path to the Drizzle migrations folder, relative to the worker bundle.
+   * Only used when autoMigrate is true.
+   * @default "./drizzle"
+   */
+  migrationsFolder?: string;
+}
 
 /**
  * Primary factory function. Returns a Cloudflare Workers-compatible export object.
@@ -51,13 +66,14 @@ export interface LeapifyOptions extends LeapifyAppOptions {}
 export function createLeapify(options: LeapifyOptions = {}) {
   const app = createApp(options);
   let loggedEmailConfig = false;
+  let migrated = false;
 
   return {
     /**
      * Cloudflare Workers fetch handler.
      * Handles all HTTP requests routed through Leapify.
      */
-    fetch(
+    async fetch(
       request: Request,
       env: LeapifyBindings,
       ctx: ExecutionContext,
@@ -78,7 +94,16 @@ export function createLeapify(options: LeapifyOptions = {}) {
         }
       }
 
-      return Promise.resolve(app.fetch(request, env, ctx));
+      if (options.autoMigrate && !migrated) {
+        migrated = true;
+        try {
+          await ensureDatabase(env.DB, options.migrationsFolder);
+        } catch (err) {
+          console.error("[leapify] Auto-migration failed:", err);
+        }
+      }
+
+      return app.fetch(request, env, ctx);
     },
 
     // Cloudflare Workers scheduled handler. Routes cron triggers by schedule string.
@@ -122,6 +147,8 @@ export function createLeapify(options: LeapifyOptions = {}) {
 
 export { createQueueHandler } from "./queues/handlers";
 export { createDb } from "./db";
+export { ensureDatabase } from "./db/migrate";
+export { createWorkerHandler, type CreateWorkerHandlerOptions } from "./worker-handler";
 
 export type {
   LeapifyBindings,
@@ -133,6 +160,35 @@ export type { LeapifyUser } from "./auth/types";
 export type { LeapifyDb } from "./db";
 export type { LeapifyJob } from "./queues/jobs";
 export type { SlotInfo } from "./services/slots";
+
+/**
+ * Runtime config shape injected into HTML pages by the worker.
+ * Use on the server side to build the config object.
+ */
+export interface RuntimeConfig {
+  production: boolean;
+  leapifyApiUrl: string;
+}
+
+/**
+ * Build the runtime config from Worker bindings.
+ * Used by createWorkerHandler() and standalone workers.
+ */
+export function getRuntimeConfig(_env: LeapifyBindings): RuntimeConfig {
+  return {
+    production: true,
+    leapifyApiUrl: "",
+  };
+}
+
+/**
+ * Inject runtime config into an HTML string as a window.__CONFIG__ script tag.
+ * Used by createWorkerHandler() and standalone workers.
+ */
+export function injectConfig(html: string, config: RuntimeConfig): string {
+  const configScript = `<script>window.__CONFIG__=${JSON.stringify(config)};</script>`;
+  return html.replace("</head>", `${configScript}</head>`);
+}
 
 // Schema re-exports for consumers running drizzle-kit migrations
 export * from "./db/schema";

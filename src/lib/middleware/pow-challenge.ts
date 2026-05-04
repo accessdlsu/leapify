@@ -44,7 +44,7 @@ const CHALLENGE_TTL_SEC = 120
 const COOKIE_MAX_AGE_SEC = 3600
 
 /** Paths exempt from PoW challenge */
-const EXEMPT_PATHS = ['/health', '/internal']
+const EXEMPT_PATHS = ['/health', '/internal', '/api/auth']
 
 // ─── Base64url Utilities ────────────────────────────────────────────────────────
 
@@ -79,7 +79,7 @@ async function importHmacKey(secret: string): Promise<CryptoKey> {
     new TextEncoder().encode(secret),
     { name: 'HMAC', hash: 'SHA-256' },
     false,
-    ['sign', 'verify'],
+    ['sign', 'verify']
   )
 }
 
@@ -91,7 +91,7 @@ async function signCookie(secret: string, ip: string): Promise<string> {
   const sig = await crypto.subtle.sign(
     'HMAC',
     key,
-    new TextEncoder().encode(payload),
+    new TextEncoder().encode(payload)
   )
   const sigB64 = base64urlEncode(new Uint8Array(sig))
   return `${base64urlEncode(new TextEncoder().encode(payload))}.${sigB64}`
@@ -100,7 +100,7 @@ async function signCookie(secret: string, ip: string): Promise<string> {
 async function validateCookie(
   secret: string,
   cookie: string,
-  ip: string,
+  ip: string
 ): Promise<boolean> {
   try {
     const [payloadB64, sigB64] = cookie.split('.')
@@ -115,7 +115,7 @@ async function validateCookie(
       'HMAC',
       key,
       sigBytes,
-      payloadBytes,
+      payloadBytes
     )
     if (!valid) return false
 
@@ -159,7 +159,7 @@ function getDifficulty(env: LeapifyBindings): number {
 function challengePageHtml(
   challengeId: string,
   difficulty: number,
-  originalUrl: string,
+  originalUrl: string
 ): string {
   return `<!DOCTYPE html>
 <html>
@@ -231,7 +231,7 @@ function challengePageHtml(
  * Exported for mounting in app.ts.
  */
 export async function handlePowVerify(
-  c: Context<{ Bindings: LeapifyBindings }>,
+  c: Context<{ Bindings: LeapifyBindings }>
 ) {
   const body = await c.req.json<{
     id?: string
@@ -247,10 +247,10 @@ export async function handlePowVerify(
       {
         error: {
           code: 'VALIDATION_ERROR',
-          message: 'Missing challenge id or nonce',
-        },
+          message: 'Missing challenge id or nonce'
+        }
       },
-      422,
+      422
     )
   }
 
@@ -259,7 +259,7 @@ export async function handlePowVerify(
   if (!challenge) {
     return c.json(
       { error: { code: 'NOT_FOUND', message: 'Challenge expired or invalid' } },
-      404,
+      404
     )
   }
 
@@ -276,7 +276,7 @@ export async function handlePowVerify(
   if (!hex.startsWith(requiredPrefix)) {
     return c.json(
       { error: { code: 'VALIDATION_ERROR', message: 'Invalid proof of work' } },
-      422,
+      422
     )
   }
 
@@ -290,7 +290,7 @@ export async function handlePowVerify(
 
   c.header(
     'Set-Cookie',
-    `${POW_COOKIE_NAME}=${token}; Path=/; Max-Age=${COOKIE_MAX_AGE_SEC}; Secure; HttpOnly; SameSite=Lax`,
+    `${POW_COOKIE_NAME}=${token}; Path=/; Max-Age=${COOKIE_MAX_AGE_SEC}; Secure; HttpOnly; SameSite=Lax`
   )
 
   return c.json({ redirect: redir || '/' })
@@ -320,7 +320,7 @@ export function createPowChallengeMiddleware() {
     // Check for valid PoW cookie
     const cookieHeader = c.req.header('Cookie') ?? ''
     const cookieMatch = cookieHeader.match(
-      new RegExp(`${POW_COOKIE_NAME}=([^;]+)`),
+      new RegExp(`${POW_COOKIE_NAME}=([^;]+)`)
     )
     if (cookieMatch) {
       const secret = c.env.INTERNAL_API_SECRET
@@ -338,7 +338,7 @@ export function createPowChallengeMiddleware() {
     await c.env.KV.put(
       `${CHALLENGE_KV_PREFIX}${challengeId}`,
       JSON.stringify({ difficulty, createdAt: Date.now() }),
-      { expirationTtl: CHALLENGE_TTL_SEC },
+      { expirationTtl: CHALLENGE_TTL_SEC }
     )
 
     // Serve challenge page

@@ -16,9 +16,12 @@ export function createCorsMiddleware(allowedOrigins: string[]): MiddlewareHandle
     const origin = c.req.header('origin')
     
     // Strict ADR-001 Check: If an Origin is present, it MUST be allowed.
-    // However, /health is completely exempt so uptime monitors can ping it globally.
+    // /health, /api/auth, and /internal are exempt so uptime monitors,
+    // OAuth redirects, and internal webhooks can reach them from any origin.
     if (
-      c.req.path !== '/health' && 
+      !c.req.path.startsWith('/health') &&
+      !c.req.path.startsWith('/api/auth') &&
+      !c.req.path.startsWith('/internal') &&
       origin && 
       !allowedOrigins.includes('*') && 
       !allowedOrigins.includes(origin)

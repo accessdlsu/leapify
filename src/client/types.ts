@@ -136,3 +136,74 @@ export interface LeapifyErrorBody {
     message: string;
   };
 }
+
+// ─── Admin request/response bodies ──────────────────────────────────────────
+
+/**
+ * Request body for POST /events (admin create event).
+ */
+export interface CreateEventBody {
+  themeId: string;
+  title: string;
+  org?: string;
+  venue?: string;
+  dateTime?: string;
+  startsAt?: number;
+  endsAt?: number;
+  price?: string;
+  backgroundColor?: string;
+  backgroundImageUrl?: string;
+  subtheme?: string;
+  isMajor?: boolean;
+  maxSlots?: number;
+  gformsId?: string;
+  gformsUrl?: string;
+  releaseAt?: number;
+  registrationOpensAt?: number;
+  registrationClosesAt?: number;
+  contentfulEntryId?: string;
+  status?: "draft" | "queued" | "published";
+}
+
+/**
+ * Request body for POST /faqs (admin create FAQ).
+ */
+export interface CreateFaqBody {
+  question: string;
+  answer: string;
+  category?: string;
+  sortOrder?: number;
+}
+
+/**
+ * Response from POST /config/sync-content (admin content sync).
+ */
+export interface SnapshotResult {
+  themesSynced: number;
+  eventsSynced: number;
+  faqsSynced: number;
+  imagesUploaded: number;
+  imagesSkipped: number;
+  errors: string[];
+}
+
+/**
+ * Response from GET /health.
+ */
+export interface HealthResponse {
+  status: string;
+  timestamp: string;
+  providers: {
+    ses: boolean;
+    resend: boolean;
+  };
+}
+
+/**
+ * Runtime config injected into HTML pages via window.__CONFIG__.
+ * Browser-safe — no server dependencies.
+ */
+export interface RuntimeConfig {
+  production: boolean;
+  leapifyApiUrl: string;
+}

@@ -52,7 +52,23 @@ export function createApp(options: LeapifyAppOptions = {}): Hono<LeapifyEnv> {
   // Mounted BEFORE the maintenance check so auth is always reachable.
   app.on(['POST', 'GET'], '/api/auth/*', (c) => {
     const auth = createAuth(c.env)
-    return auth.handler(c.req.raw)
+
+    // Ensure cf-connecting-ip is present for Better Auth rate limiting
+    const req = c.req.raw
+    if (!req.headers.get('cf-connecting-ip')) {
+      const forwarded = req.headers.get('x-forwarded-for')
+      const ip = forwarded?.split(',')[0]?.trim() || '127.0.0.1'
+      const newHeaders = new Headers(req.headers)
+      newHeaders.set('cf-connecting-ip', ip)
+      return auth.handler(new Request(req.url, {
+        method: req.method,
+        headers: newHeaders,
+        body: req.method === 'GET' ? null : req.body,
+        redirect: req.redirect,
+      }))
+    }
+
+    return auth.handler(req)
   })
 
   // Maintenance mode check

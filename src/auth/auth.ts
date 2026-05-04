@@ -35,6 +35,12 @@ export function createAuth(env: LeapifyBindings) {
     baseURL: env.BETTER_AUTH_URL,
     secret: env.BETTER_AUTH_SECRET,
 
+    advanced: {
+      ipAddress: {
+        ipAddressHeaders: ['cf-connecting-ip', 'x-forwarded-for', 'x-real-ip'],
+      },
+    },
+
     database: drizzleAdapter(db, {
       provider: 'sqlite',
       schema: {
@@ -50,7 +56,8 @@ export function createAuth(env: LeapifyBindings) {
     socialProviders: {
       google: {
         clientId: env.GOOGLE_CLIENT_ID,
-        clientSecret: env.GOOGLE_CLIENT_SECRET
+        clientSecret: env.GOOGLE_CLIENT_SECRET,
+        hd: env.GOOGLE_HD || undefined
       }
     },
 

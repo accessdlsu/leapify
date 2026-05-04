@@ -27,15 +27,37 @@ export type {
   LeapifyErrorBody,
   UserRole,
   EventStatus,
+  CreateEventBody,
+  CreateFaqBody,
+  SnapshotResult,
+  HealthResponse,
+  RuntimeConfig,
 } from "./types";
 
 export {
   createLeapifyAuthClient,
-  signInWithGoogle,
+  signInWithGoogleRedirect,
+  syncCookieSessionToStorage,
   getLeapifyToken,
   signOut,
 } from "./auth";
 export type { LeapifyAuthClient } from "./auth";
+
+export { solvePowChallenge } from "./pow";
+export { initializeSession } from "./session";
+
+/**
+ * Read the runtime config injected by the worker into HTML pages.
+ * Returns null if not running in a browser or config not injected.
+ */
+export function getClientConfig(): RuntimeConfig | null {
+  if (typeof window === "undefined") return null;
+  const config = (window as unknown as Record<string, unknown>).__CONFIG__;
+  if (!config || typeof config !== "object") return null;
+  return config as RuntimeConfig;
+}
+
+import type { RuntimeConfig } from "./types";
 
 /**
  * Structured error thrown by all client methods on non-2xx responses.
@@ -89,6 +111,10 @@ import type {
   SiteConfig,
   ToggleBookmarkResult,
   LeapifyErrorBody,
+  CreateEventBody,
+  CreateFaqBody,
+  SnapshotResult,
+  HealthResponse,
 } from "./types";
 
 type GetTokenFn = () => Promise<string | null>;
@@ -129,17 +155,16 @@ async function parseResponse<T>(res: Response): Promise<T> {
  * Creates a typed Leapify API client bound to a base URL.
  *
  * @param baseUrl - The deployed Leapify Worker URL (e.g. `https://api.leap.yourdomain.com`).
- * @param getToken - Optional async function that returns a Firebase ID token string,
- *   or null for guest requests. Use `getLeapifyToken(auth.currentUser)` from this module.
+ * @param getToken - Optional async function that returns a session token string,
+ *   or null for guest requests. Use `getLeapifyToken()` from this module.
  *
  * @example
  * // lib/api.ts
  * import { createLeapifyClient, getLeapifyToken } from 'leapify/client'
- * import { auth } from './firebase'
  *
  * export const api = createLeapifyClient(
  *   process.env.NEXT_PUBLIC_API_URL!,
- *   () => getLeapifyToken(auth.currentUser),
+ *   () => getLeapifyToken(),
  * )
  */
 export function createLeapifyClient(baseUrl: string, getToken?: GetTokenFn) {
@@ -157,6 +182,20 @@ export function createLeapifyClient(baseUrl: string, getToken?: GetTokenFn) {
       method: "POST",
       headers,
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+    return parseResponse<T>(res);
+  }
+
+  async function postFormData<T>(path: string, formData: FormData): Promise<T> {
+    const headers: Record<string, string> = {};
+    if (getToken) {
+      const token = await getToken();
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+    }
+    const res = await fetch(`${base}${path}`, {
+      method: "POST",
+      headers,
+      body: formData,
     });
     return parseResponse<T>(res);
   }
@@ -223,6 +262,22 @@ export function createLeapifyClient(baseUrl: string, getToken?: GetTokenFn) {
      */
     getSlots(slug: string): Promise<SlotInfo> {
       return get<SlotInfo>(`/events/${encodeURIComponent(slug)}/slots`);
+    },
+
+    /**
+     * POST /events — admin only.
+     * Creates a new event. Auto-generates slug from title.
+     */
+    createEvent(data: CreateEventBody): Promise<LeapEvent> {
+      return post<LeapEvent>("/events", data);
+    },
+
+    /**
+     * PATCH /events/:slug — admin only.
+     * Updates an existing event by slug.
+     */
+    updateEvent(slug: string, data: Partial<CreateEventBody>): Promise<LeapEvent> {
+      return patch<LeapEvent>(`/events/${encodeURIComponent(slug)}`, data);
     },
 
     // ── Themes ─────────────────────────────────────────────────────────────
@@ -308,6 +363,68 @@ export function createLeapifyClient(baseUrl: string, getToken?: GetTokenFn) {
      */
     getFaqs(): Promise<Faq[]> {
       return get<Faq[]>("/faqs");
+    },
+
+    /**
+     * POST /faqs — admin only.
+     * Creates a new FAQ item.
+     */
+    createFaq(data: CreateFaqBody): Promise<Faq> {
+      return post<Faq>("/faqs", data);
+    },
+
+    /**
+     * PATCH /faqs/:id — admin only.
+     * Updates an existing FAQ item.
+     */
+    updateFaq(id: string, data: Partial<CreateFaqBody>): Promise<Faq> {
+      return patch<Faq>(`/faqs/${encodeURIComponent(id)}`, data);
+    },
+
+    /**
+     * DELETE /faqs/:id — admin only.
+     * Soft-deletes a FAQ (sets isActive: false).
+     */
+    deleteFaq(id: string): Promise<{ deleted: boolean }> {
+      return del<{ deleted: boolean }>(`/faqs/${encodeURIComponent(id)}`);
+    },
+
+    // ── Uploads ────────────────────────────────────────────────────────────
+
+    /**
+     * POST /uploads/images — admin only.
+     * Uploads an image file to R2. Accepts multipart/form-data.
+     * Returns the public URL, storage key, size, and content type.
+     */
+    uploadImage(file: File | Blob): Promise<{
+      url: string;
+      key: string;
+      size: number;
+      contentType: string;
+    }> {
+      const formData = new FormData();
+      formData.append("file", file);
+      return postFormData("/uploads/images", formData);
+    },
+
+    // ── Content Sync ───────────────────────────────────────────────────────
+
+    /**
+     * POST /config/sync-content — admin only.
+     * Pushes all D1 content to Contentful. Auto-generates content types if missing.
+     */
+    syncContent(): Promise<SnapshotResult> {
+      return post<SnapshotResult>("/config/sync-content");
+    },
+
+    // ── Health ─────────────────────────────────────────────────────────────
+
+    /**
+     * GET /health
+     * Public health check. Returns provider availability status.
+     */
+    healthCheck(): Promise<HealthResponse> {
+      return get<HealthResponse>("/health");
     },
   };
 }
