@@ -27,7 +27,7 @@ export const faqsRoute = new Hono<LeapifyEnv>()
  * Push a single FAQ entry to Contentful in the background.
  * No-op if Contentful Management API is not configured.
  */
-function pushFaqToContentful(env: LeapifyEnv['Bindings'], faq: typeof faqs.$inferSelect) {
+async function pushFaqToContentful(env: LeapifyEnv['Bindings'], faq: typeof faqs.$inferSelect) {
   console.log('[Contentful] pushFaqToContentful called for FAQ:', faq.id)
   if (!ContentfulManagement.isConfigured(env.CONTENTFUL_SPACE_ID, env.CONTENTFUL_MANAGEMENT_TOKEN)) {
     console.log('[Contentful] Skipping FAQ push — Management API not configured',
@@ -41,16 +41,18 @@ function pushFaqToContentful(env: LeapifyEnv['Bindings'], faq: typeof faqs.$infe
     env.CONTENTFUL_ENVIRONMENT,
   )
 
-  mgmt.upsertEntry(CF_FAQ_CT, faq.id, {
-    'en-US': { question: faq.question },
-    answer: { 'en-US': faq.answer },
-    category: { 'en-US': faq.category },
-    sortOrder: { 'en-US': faq.sortOrder },
-    isActive: { 'en-US': faq.isActive },
-  }).then(
-    () => console.log(`[Contentful] Synced FAQ ${faq.id} successfully`),
-    (err) => console.warn(`[Contentful] Failed to sync FAQ ${faq.id}:`, err),
-  )
+  try {
+    await mgmt.upsertEntry(CF_FAQ_CT, faq.id, {
+      'en-US': { question: faq.question },
+      answer: { 'en-US': faq.answer },
+      category: { 'en-US': faq.category },
+      sortOrder: { 'en-US': faq.sortOrder },
+      isActive: { 'en-US': faq.isActive },
+    })
+    console.log(`[Contentful] Synced FAQ ${faq.id} successfully`)
+  } catch (err) {
+    console.warn(`[Contentful] Failed to sync FAQ ${faq.id}:`, err)
+  }
 }
 
 // GET /faqs — public, KV cached 10min

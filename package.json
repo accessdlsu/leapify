@@ -1,6 +1,6 @@
 {
   "name": "@access-dlsu/leapify",
-  "version": "0.260505.3",
+  "version": "0.260505.5",
   "description": "DLSU CSO LEAP backend (run as a standalone Cloudflare Worker or install as an npm module)",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -42,6 +42,7 @@
     "deploy": "npm run build && wrangler deploy",
     "test": "vitest",
     "test:run": "vitest run",
+    "cf-typegen": "wrangler types",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
@@ -121,7 +122,6 @@
   "dependencies": {
     "@hono/zod-validator": "^0.7.6",
     "better-auth": "^1.6.9",
-    "leapify": "file:leapify-0.260503.3.tgz",
     "wrangler": "^4.80.0",
     "zod": "^4.3.6"
   },
