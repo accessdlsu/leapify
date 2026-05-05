@@ -1,9 +1,8 @@
 /**
  * Auto-migration helper for D1 databases.
  *
- * When enabled, runs Drizzle migrations on the first request if the
- * database has no tables yet. Safe to call on every boot — Drizzle's
- * migrate() is idempotent and tracks applied migrations in a internal table.
+ * When enabled, ensures all required tables exist on the first request.
+ * Safe to call on every boot — all statements use IF NOT EXISTS.
  *
  * Import from 'leapify' — server-only.
  *
@@ -14,25 +13,195 @@
  * export default createLeapify({ autoMigrate: true })
  */
 
-import { migrate } from "drizzle-orm/d1/migrator";
-import { createDb } from "./index";
+// ─── Patches for existing databases ──────────────────────────────────────────
+// ALTER TABLE statements that add columns added after initial deploy.
+// Safe to run on every boot — duplicate column errors are caught and ignored.
+
+const PATCH_STATEMENTS = [
+  `ALTER TABLE "themes" ADD COLUMN "updated_at" integer NOT NULL DEFAULT (unixepoch())`,
+];
+
+// ─── Full schema for fresh databases ────────────────────────────────────────
+
+const CREATE_STATEMENTS = [
+  // Better Auth: user
+  `CREATE TABLE IF NOT EXISTS "user" (
+    "id" text PRIMARY KEY NOT NULL,
+    "name" text NOT NULL,
+    "email" text NOT NULL,
+    "email_verified" integer DEFAULT false NOT NULL,
+    "image" text,
+    "created_at" integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
+    "updated_at" integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "user_email_unique" ON "user" ("email")`,
+
+  // Better Auth: session
+  `CREATE TABLE IF NOT EXISTS "session" (
+    "id" text PRIMARY KEY NOT NULL,
+    "expires_at" integer NOT NULL,
+    "token" text NOT NULL,
+    "created_at" integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
+    "updated_at" integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
+    "ip_address" text,
+    "user_agent" text,
+    "user_id" text NOT NULL,
+    FOREIGN KEY ("user_id") REFERENCES "user"("id") ON UPDATE no action ON DELETE cascade
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "session_token_unique" ON "session" ("token")`,
+  `CREATE INDEX IF NOT EXISTS "session_userId_idx" ON "session" ("user_id")`,
+
+  // Better Auth: account
+  `CREATE TABLE IF NOT EXISTS "account" (
+    "id" text PRIMARY KEY NOT NULL,
+    "account_id" text NOT NULL,
+    "provider_id" text NOT NULL,
+    "user_id" text NOT NULL,
+    "access_token" text,
+    "refresh_token" text,
+    "id_token" text,
+    "access_token_expires_at" integer,
+    "refresh_token_expires_at" integer,
+    "scope" text,
+    "password" text,
+    "created_at" integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
+    "updated_at" integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
+    FOREIGN KEY ("user_id") REFERENCES "user"("id") ON UPDATE no action ON DELETE cascade
+  )`,
+  `CREATE INDEX IF NOT EXISTS "account_userId_idx" ON "account" ("user_id")`,
+
+  // Better Auth: verification
+  `CREATE TABLE IF NOT EXISTS "verification" (
+    "id" text PRIMARY KEY NOT NULL,
+    "identifier" text NOT NULL,
+    "value" text NOT NULL,
+    "expires_at" integer NOT NULL,
+    "created_at" integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
+    "updated_at" integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer))
+  )`,
+  `CREATE INDEX IF NOT EXISTS "verification_identifier_idx" ON "verification" ("identifier")`,
+
+  // App: users
+  `CREATE TABLE IF NOT EXISTS "users" (
+    "id" text PRIMARY KEY NOT NULL,
+    "better_auth_id" text NOT NULL,
+    "email" text NOT NULL,
+    "name" text NOT NULL,
+    "role" text DEFAULT 'student' NOT NULL,
+    "created_at" integer DEFAULT (unixepoch()) NOT NULL
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "users_better_auth_id_unique" ON "users" ("better_auth_id")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "users_email_unique" ON "users" ("email")`,
+
+  // App: themes (before events, due to FK)
+  `CREATE TABLE IF NOT EXISTS "themes" (
+    "id" text PRIMARY KEY NOT NULL,
+    "name" text NOT NULL,
+    "path" text NOT NULL,
+    "color" text,
+    "created_at" integer NOT NULL,
+    "updated_at" integer NOT NULL DEFAULT (unixepoch())
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "themes_name_unique" ON "themes" ("name")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "themes_path_unique" ON "themes" ("path")`,
+
+  // App: events
+  `CREATE TABLE IF NOT EXISTS "events" (
+    "id" text PRIMARY KEY NOT NULL,
+    "slug" text NOT NULL,
+    "theme_id" text,
+    "title" text NOT NULL,
+    "org" text,
+    "venue" text,
+    "date_time" text,
+    "starts_at" integer,
+    "ends_at" integer,
+    "price" text,
+    "background_color" text,
+    "background_image_url" text,
+    "subtheme" text,
+    "is_major" integer DEFAULT false NOT NULL,
+    "max_slots" integer DEFAULT 0 NOT NULL,
+    "registered_slots" integer DEFAULT 0 NOT NULL,
+    "gforms_id" text,
+    "gforms_url" text,
+    "watch_id" text,
+    "watch_expires_at" integer,
+    "status" text DEFAULT 'draft' NOT NULL,
+    "release_at" integer,
+    "registration_opens_at" integer,
+    "registration_closes_at" integer,
+    "reminder_24h_sent" integer DEFAULT false NOT NULL,
+    "reminder_1h_sent" integer DEFAULT false NOT NULL,
+    "contentful_entry_id" text,
+    "created_at" integer DEFAULT (unixepoch()) NOT NULL,
+    "published_at" integer,
+    FOREIGN KEY ("theme_id") REFERENCES "themes"("id") ON UPDATE no action ON DELETE set null
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "events_slug_unique" ON "events" ("slug")`,
+  `CREATE INDEX IF NOT EXISTS "idx_events_status_release" ON "events" ("status", "release_at")`,
+  `CREATE INDEX IF NOT EXISTS "idx_events_theme_id" ON "events" ("theme_id")`,
+  `CREATE INDEX IF NOT EXISTS "idx_events_slug" ON "events" ("slug")`,
+
+  // App: faqs
+  `CREATE TABLE IF NOT EXISTS "faqs" (
+    "id" text PRIMARY KEY NOT NULL,
+    "question" text NOT NULL,
+    "answer" text NOT NULL,
+    "category" text,
+    "sort_order" integer DEFAULT 0 NOT NULL,
+    "is_active" integer DEFAULT true NOT NULL,
+    "created_at" integer DEFAULT (unixepoch()) NOT NULL,
+    "updated_at" integer DEFAULT (unixepoch()) NOT NULL
+  )`,
+
+  // App: site_config
+  `CREATE TABLE IF NOT EXISTS "site_config" (
+    "key" text PRIMARY KEY NOT NULL,
+    "value" text NOT NULL,
+    "updated_at" integer DEFAULT (unixepoch()) NOT NULL
+  )`,
+
+  // App: bookmarks
+  `CREATE TABLE IF NOT EXISTS "bookmarks" (
+    "id" text PRIMARY KEY NOT NULL,
+    "user_id" text NOT NULL,
+    "event_id" text NOT NULL,
+    "created_at" integer DEFAULT (unixepoch()) NOT NULL,
+    FOREIGN KEY ("user_id") REFERENCES "users"("id") ON UPDATE no action ON DELETE cascade,
+    FOREIGN KEY ("event_id") REFERENCES "events"("id") ON UPDATE no action ON DELETE cascade
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "idx_bookmarks_user_event" ON "bookmarks" ("user_id", "event_id")`,
+];
 
 /**
- * Run pending Drizzle migrations against a D1 database.
+ * Ensure all required tables exist in the D1 database.
  *
- * This is idempotent — calling it multiple times is safe. Only unapplied
- * migrations will be executed.
- *
- * @param d1 - The D1 database binding.
- * @param migrationsFolder - Path to the migrations folder relative to the
- *   worker bundle. Defaults to "./drizzle" which works for the standalone
- *   worker build. npm module consumers should set this to their own
- *   migrations directory.
+ * Uses CREATE TABLE / INDEX IF NOT EXISTS so it's safe to call on every
+ * boot. Only executes the full schema if the `user` table is missing
+ * (i.e. fresh database).
  */
-export async function ensureDatabase(
-  d1: D1Database,
-  migrationsFolder = "./drizzle",
-): Promise<void> {
-  const db = createDb(d1);
-  await migrate(db, { migrationsFolder });
+export async function ensureDatabase(d1: D1Database): Promise<void> {
+  // Check if database is fresh (no tables yet)
+  const { results } = await d1
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='user'")
+    .all<{ name: string }>();
+
+  if (results.length === 0) {
+    // Fresh database — create all tables
+    for (const sql of CREATE_STATEMENTS) {
+      await d1.prepare(sql).run();
+    }
+  }
+
+  // Always run patches (safe for both fresh and existing databases)
+  for (const sql of PATCH_STATEMENTS) {
+    try {
+      await d1.prepare(sql).run();
+    } catch (err: any) {
+      // Ignore "duplicate column" errors from ALTER TABLE
+      if (err?.message?.includes('duplicate column')) continue;
+      throw err;
+    }
+  }
 }

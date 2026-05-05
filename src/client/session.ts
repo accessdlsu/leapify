@@ -38,7 +38,7 @@ export async function initializeSession(
   if (!token) return null;
 
   const base = baseUrl.replace(/\/$/, "");
-  const res = await fetch(`${base}/users/me`, {
+  const res = await fetch(`${base}/api/users/me`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 

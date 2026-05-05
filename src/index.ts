@@ -41,18 +41,11 @@ import type { LeapifyJob } from "./queues/jobs";
 
 export interface LeapifyOptions extends LeapifyAppOptions {
   /**
-   * Automatically run Drizzle migrations on first request.
-   * Safe for production — idempotent (only applies pending migrations).
-   * Requires the /drizzle migrations folder to be accessible at runtime.
+   * Automatically ensure all required tables exist on first request.
+   * Safe for production — idempotent (only runs on fresh databases).
    * @default false
    */
   autoMigrate?: boolean;
-  /**
-   * Path to the Drizzle migrations folder, relative to the worker bundle.
-   * Only used when autoMigrate is true.
-   * @default "./drizzle"
-   */
-  migrationsFolder?: string;
 }
 
 /**
@@ -97,7 +90,7 @@ export function createLeapify(options: LeapifyOptions = {}) {
       if (options.autoMigrate && !migrated) {
         migrated = true;
         try {
-          await ensureDatabase(env.DB, options.migrationsFolder);
+          await ensureDatabase(env.DB);
         } catch (err) {
           console.error("[leapify] Auto-migration failed:", err);
         }
@@ -149,6 +142,8 @@ export { createQueueHandler } from "./queues/handlers";
 export { createDb } from "./db";
 export { ensureDatabase } from "./db/migrate";
 export { createWorkerHandler, type CreateWorkerHandlerOptions } from "./worker-handler";
+export { ContentfulManagement } from "./services/contentful-management";
+export { ensureContentTypes } from "./services/snapshot";
 
 export type {
   LeapifyBindings,

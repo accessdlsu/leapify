@@ -1,14 +1,12 @@
 import type { LeapifyBindings } from '../types'
 import { createDb } from '../db'
-import { siteConfig } from '../db/schema/site-config'
-import { eq } from 'drizzle-orm'
 
 /**
  * Cron: every hour (`0 * * * *`)
  *
- * Detects when siteEndsAt has passed and triggers the one-time
- * Contentful → D1 content snapshot. Sets snapshot_completed flag
- * to prevent re-runs.
+ * Detects when siteEndsAt has passed and triggers the
+ * Contentful → D1 content snapshot. Retries automatically
+ * every hour until the snapshot succeeds.
  */
 export async function lifecycleCheck(
   env: LeapifyBindings,
@@ -31,13 +29,8 @@ export async function lifecycleCheck(
   if (now >= siteEndsAt) {
     console.log('[lifecycle-check] siteEndsAt passed — triggering content snapshot.')
 
-    // Mark as completed FIRST to prevent duplicate triggers on re-run
-    await db
-      .update(siteConfig)
-      .set({ value: 'true', updatedAt: now })
-      .where(eq(siteConfig.key, 'snapshot_completed'))
-
     // Queue the snapshot job (processed by queue consumer)
+    // Don't set snapshot_completed here — the queue handler sets it on success
     if (env.EMAIL_QUEUE) {
       ctx.waitUntil(
         env.EMAIL_QUEUE.send({ type: 'snapshot_content', payload: { triggeredAt: now } }),

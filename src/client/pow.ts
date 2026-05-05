@@ -32,7 +32,7 @@ export async function solvePowChallenge(baseUrl?: string): Promise<boolean> {
 
   let html: string;
   try {
-    const res = await fetch(`${base}/events`, { credentials: "include" });
+    const res = await fetch(`${base}/api/events`, { credentials: "include" });
     const ct = res.headers.get("content-type") || "";
     if (!ct.includes("text/html")) {
       return false;

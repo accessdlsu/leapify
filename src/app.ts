@@ -95,12 +95,12 @@ export function createApp(options: LeapifyAppOptions = {}): Hono<LeapifyEnv> {
   // Routes
   app.post(POW_VERIFY_PATH, handlePowVerify)
   app.route('/health', healthRoute)
-  app.route('/config', siteConfigRoute)
-  app.route('/events', eventsRoute)
-  app.route('/themes', themesRoute)
-  app.route('/users', usersRoute)
-  app.route('/faqs', faqsRoute)
-  app.route('/uploads', uploadsRoute)
+  app.route('/api/config', siteConfigRoute)
+  app.route('/api/events', eventsRoute)
+  app.route('/api/themes', themesRoute)
+  app.route('/api/users', usersRoute)
+  app.route('/api/faqs', faqsRoute)
+  app.route('/api/uploads', uploadsRoute)
   app.route('/internal/gforms-webhook', gformsWebhookRoute)
 
   // Error handler

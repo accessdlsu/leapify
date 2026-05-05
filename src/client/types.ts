@@ -190,13 +190,17 @@ export interface SnapshotResult {
 /**
  * Response from GET /health.
  */
+export interface ServiceHealth {
+  configured: boolean;
+  ok: boolean;
+  latencyMs: number;
+  error?: string;
+}
+
 export interface HealthResponse {
-  status: string;
+  status: 'OK' | 'DEGRADED';
   timestamp: string;
-  providers: {
-    ses: boolean;
-    resend: boolean;
-  };
+  services: Record<string, ServiceHealth>;
 }
 
 /**

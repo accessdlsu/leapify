@@ -8,6 +8,7 @@ export const themes = sqliteTable('themes', {
   path: text('path').notNull().unique(), // e.g. "/pirates-cove"
   color: text('color'),
   createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+  updatedAt: integer('updated_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
 })
 
 export const themesRelations = relations(themes, ({ many }) => ({

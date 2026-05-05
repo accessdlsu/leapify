@@ -3,6 +3,7 @@ import type { LeapifyBindings } from '../types'
 import type { LeapifyJob } from './jobs'
 import { createDb } from '../db'
 import { events } from '../db/schema/events'
+import { siteConfig } from '../db/schema/site-config'
 import { createEmailRouter, type EmailRouter } from '../services/email'
 import { buildReminderEmail } from '../services/resend'
 import { GFormsService } from '../services/gforms'
@@ -139,8 +140,20 @@ async function processJob(
 
       // Auto-generate content types, then push D1 → Contentful
       await ensureContentTypes(mgmt, {})
-      const result = await pushToContentful(db, mgmt, {})
+      const result = await pushToContentful(db, mgmt, {}, env.KV)
       console.log('[Snapshot] Result:', JSON.stringify(result))
+
+      // Mark snapshot as completed only on success
+      if (result.errors.length === 0) {
+        const now = Math.floor(Date.now() / 1000)
+        await db
+          .update(siteConfig)
+          .set({ value: 'true', updatedAt: now })
+          .where(eq(siteConfig.key, 'snapshot_completed'))
+        console.log('[Snapshot] Marked snapshot_completed = true')
+      } else {
+        console.warn(`[Snapshot] ${result.errors.length} errors — will retry next hour`)
+      }
       break
     }
   }

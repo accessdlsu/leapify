@@ -226,173 +226,173 @@ export function createLeapifyClient(baseUrl: string, getToken?: GetTokenFn) {
      * Use `now` (server unix epoch) for timestamp comparisons.
      */
     getConfig(): Promise<SiteConfig> {
-      return get<SiteConfig>("/config");
+      return get<SiteConfig>("/api/config");
     },
 
     /**
-     * PATCH /config/:key — admin only.
+     * PATCH /api/config/:key — admin only.
      * Upserts a site config value. Requires admin or super_admin role.
      */
     updateConfig<K extends string>(key: K, value: unknown): Promise<{ key: K; value: unknown }> {
-      return patch(`/config/${encodeURIComponent(key)}`, { value });
+      return patch(`/api/config/${encodeURIComponent(key)}`, { value });
     },
 
     // ── Events ─────────────────────────────────────────────────────────────
 
     /**
-     * GET /events
+     * GET /api/events
      * Returns all published events. Response is ETag-cached for 7 days.
      */
     getEvents(): Promise<LeapEvent[]> {
-      return get<LeapEvent[]>("/events");
+      return get<LeapEvent[]>("/api/events");
     },
 
     /**
-     * GET /events/:slug
+     * GET /api/events/:slug
      * Returns a single published event by slug.
      */
     getEvent(slug: string): Promise<LeapEvent> {
-      return get<LeapEvent>(`/events/${encodeURIComponent(slug)}`);
+      return get<LeapEvent>(`/api/events/${encodeURIComponent(slug)}`);
     },
 
     /**
-     * GET /events/:slug/slots
+     * GET /api/events/:slug/slots
      * Returns real-time slot availability. CF edge caches this for 5 seconds.
      * Poll every 8–10 seconds on event detail pages.
      */
     getSlots(slug: string): Promise<SlotInfo> {
-      return get<SlotInfo>(`/events/${encodeURIComponent(slug)}/slots`);
+      return get<SlotInfo>(`/api/events/${encodeURIComponent(slug)}/slots`);
     },
 
     /**
-     * POST /events — admin only.
+     * POST /api/events — admin only.
      * Creates a new event. Auto-generates slug from title.
      */
     createEvent(data: CreateEventBody): Promise<LeapEvent> {
-      return post<LeapEvent>("/events", data);
+      return post<LeapEvent>("/api/events", data);
     },
 
     /**
-     * PATCH /events/:slug — admin only.
+     * PATCH /api/events/:slug — admin only.
      * Updates an existing event by slug.
      */
     updateEvent(slug: string, data: Partial<CreateEventBody>): Promise<LeapEvent> {
-      return patch<LeapEvent>(`/events/${encodeURIComponent(slug)}`, data);
+      return patch<LeapEvent>(`/api/events/${encodeURIComponent(slug)}`, data);
     },
 
     // ── Themes ─────────────────────────────────────────────────────────────
 
     /**
-     * GET /themes
+     * GET /api/themes
      * Returns all themes.
      */
     getThemes(): Promise<Theme[]> {
-      return get<Theme[]>("/themes");
+      return get<Theme[]>("/api/themes");
     },
 
     /**
-     * POST /themes — admin only.
+     * POST /api/themes — admin only.
      */
     createTheme(data: Omit<Theme, "id" | "createdAt">): Promise<Theme> {
-      return post<Theme>("/themes", data);
+      return post<Theme>("/api/themes", data);
     },
 
     /**
-     * PATCH /themes/:id — admin only.
+     * PATCH /api/themes/:id — admin only.
      */
     updateTheme(id: string, data: Partial<Omit<Theme, "id" | "createdAt">>): Promise<Theme> {
-      return patch<Theme>(`/themes/${encodeURIComponent(id)}`, data);
+      return patch<Theme>(`/api/themes/${encodeURIComponent(id)}`, data);
     },
 
     /**
-     * DELETE /themes/:id — admin only.
+     * DELETE /api/themes/:id — admin only.
      */
     deleteTheme(id: string): Promise<void> {
-      return del<void>(`/themes/${encodeURIComponent(id)}`);
+      return del<void>(`/api/themes/${encodeURIComponent(id)}`);
     },
 
     // ── Users ──────────────────────────────────────────────────────────────
 
     /**
-     * GET /users/me
+     * GET /api/users/me
      * Returns the authenticated user's profile, or null for guests.
      * Use `profile.role` to gate admin UI.
      */
     getMe(): Promise<UserProfile | null> {
-      return get<UserProfile | null>("/users/me");
+      return get<UserProfile | null>("/api/users/me");
     },
 
     // ── Bookmarks ──────────────────────────────────────────────────────────
 
     /**
-     * GET /users/me/bookmarks
+     * GET /api/users/me/bookmarks
      * Returns the authenticated user's bookmarked events.
      * Returns an empty array for unauthenticated users.
      */
     getBookmarks(): Promise<BookmarkEntry[]> {
-      return get<BookmarkEntry[]>("/users/me/bookmarks");
+      return get<BookmarkEntry[]>("/api/users/me/bookmarks");
     },
 
     /**
-     * POST /users/me/bookmarks/:eventId
+     * POST /api/users/me/bookmarks/:eventId
      * Toggles a bookmark on/off. Requires authentication.
      * Returns `{ bookmarked: true }` (201) on add, `{ bookmarked: false }` (200) on remove.
      */
     toggleBookmark(eventId: string): Promise<ToggleBookmarkResult> {
       return post<ToggleBookmarkResult>(
-        `/users/me/bookmarks/${encodeURIComponent(eventId)}`,
+        `/api/users/me/bookmarks/${encodeURIComponent(eventId)}`,
       );
     },
 
     /**
-     * DELETE /users/me/bookmarks/:eventId
+     * DELETE /api/users/me/bookmarks/:eventId
      * Removes a bookmark. Requires authentication.
      */
     deleteBookmark(eventId: string): Promise<ToggleBookmarkResult> {
       return del<ToggleBookmarkResult>(
-        `/users/me/bookmarks/${encodeURIComponent(eventId)}`,
+        `/api/users/me/bookmarks/${encodeURIComponent(eventId)}`,
       );
     },
 
     // ── FAQs ───────────────────────────────────────────────────────────────
 
     /**
-     * GET /faqs
+     * GET /api/faqs
      * Returns all active FAQs. Cached in KV for 10 minutes.
      * The `answer` field is markdown — render with a markdown library.
      */
     getFaqs(): Promise<Faq[]> {
-      return get<Faq[]>("/faqs");
+      return get<Faq[]>("/api/faqs");
     },
 
     /**
-     * POST /faqs — admin only.
+     * POST /api/faqs — admin only.
      * Creates a new FAQ item.
      */
     createFaq(data: CreateFaqBody): Promise<Faq> {
-      return post<Faq>("/faqs", data);
+      return post<Faq>("/api/faqs", data);
     },
 
     /**
-     * PATCH /faqs/:id — admin only.
+     * PATCH /api/faqs/:id — admin only.
      * Updates an existing FAQ item.
      */
     updateFaq(id: string, data: Partial<CreateFaqBody>): Promise<Faq> {
-      return patch<Faq>(`/faqs/${encodeURIComponent(id)}`, data);
+      return patch<Faq>(`/api/faqs/${encodeURIComponent(id)}`, data);
     },
 
     /**
-     * DELETE /faqs/:id — admin only.
+     * DELETE /api/faqs/:id — admin only.
      * Soft-deletes a FAQ (sets isActive: false).
      */
     deleteFaq(id: string): Promise<{ deleted: boolean }> {
-      return del<{ deleted: boolean }>(`/faqs/${encodeURIComponent(id)}`);
+      return del<{ deleted: boolean }>(`/api/faqs/${encodeURIComponent(id)}`);
     },
 
     // ── Uploads ────────────────────────────────────────────────────────────
 
     /**
-     * POST /uploads/images — admin only.
+     * POST /api/uploads/images — admin only.
      * Uploads an image file to R2. Accepts multipart/form-data.
      * Returns the public URL, storage key, size, and content type.
      */
@@ -404,17 +404,17 @@ export function createLeapifyClient(baseUrl: string, getToken?: GetTokenFn) {
     }> {
       const formData = new FormData();
       formData.append("file", file);
-      return postFormData("/uploads/images", formData);
+      return postFormData("/api/uploads/images", formData);
     },
 
     // ── Content Sync ───────────────────────────────────────────────────────
 
     /**
-     * POST /config/sync-content — admin only.
+     * POST /api/config/sync-content — admin only.
      * Pushes all D1 content to Contentful. Auto-generates content types if missing.
      */
     syncContent(): Promise<SnapshotResult> {
-      return post<SnapshotResult>("/config/sync-content");
+      return post<SnapshotResult>("/api/config/sync-content");
     },
 
     // ── Health ─────────────────────────────────────────────────────────────

@@ -88,16 +88,31 @@ export function createAuth(env: LeapifyBindings) {
            */
           after: async (user) => {
             const [{ total }] = await db.select({ total: count() }).from(users)
+            const isFirstUser = total === 0
 
-            await db
-              .insert(users)
-              .values({
-                betterAuthId: user.id,
-                email: user.email,
-                name: user.name ?? user.email.split('@')[0],
-                role: total === 0 ? 'super_admin' : 'student'
-              })
-              .onConflictDoNothing({ target: users.betterAuthId })
+            const base = {
+              betterAuthId: user.id,
+              email: user.email,
+              name: user.name ?? user.email.split('@')[0],
+              role: isFirstUser ? 'super_admin' as const : 'student' as const,
+            }
+
+            if (isFirstUser) {
+              // Atomic: insert as super_admin, or update existing row (created
+              // by the resolveUser race) to super_admin.
+              await db
+                .insert(users)
+                .values(base)
+                .onConflictDoUpdate({
+                  target: users.betterAuthId,
+                  set: { role: 'super_admin' },
+                })
+            } else {
+              await db
+                .insert(users)
+                .values(base)
+                .onConflictDoNothing({ target: users.betterAuthId })
+            }
           }
         }
       }

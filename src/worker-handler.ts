@@ -28,12 +28,12 @@ import type { LeapifyJob } from "./queues/jobs";
 
 const API_PREFIXES = [
   "/api/auth/",
-  "/events",
-  "/users",
-  "/faqs",
-  "/themes",
-  "/config",
-  "/uploads",
+  "/api/events",
+  "/api/users",
+  "/api/faqs",
+  "/api/themes",
+  "/api/config",
+  "/api/uploads",
   "/health",
   "/internal/",
   "/.well-known/",
@@ -56,6 +56,12 @@ export interface CreateWorkerHandlerOptions {
    * Required for Google Forms Watch push notifications.
    */
   gformsWebhookUrl?: string;
+  /**
+   * Automatically ensure all required tables exist on first request.
+   * Safe for production — idempotent (only runs on fresh databases).
+   * @default false
+   */
+  autoMigrate?: boolean;
   /**
    * Serve the frontend (SSR or static assets).
    * Return a Response for HTML pages, or null for non-HTML requests.
@@ -102,6 +108,7 @@ export function createWorkerHandler(options: CreateWorkerHandlerOptions) {
         ["*"];
       leapify = createLeapify({
         allowedOrigins: origins,
+        ...(options.autoMigrate !== undefined ? { autoMigrate: options.autoMigrate } : {}),
         ...(options.gformsWebhookUrl !== undefined
           ? { gformsWebhookUrl: options.gformsWebhookUrl }
           : {}),

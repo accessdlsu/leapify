@@ -188,19 +188,11 @@ function challengePageHtml(
       const challengeId = ${JSON.stringify(challengeId)};
       const difficulty = ${difficulty};
       const prefix = '0'.repeat(Math.ceil(difficulty / 4));
-      const data = new TextEncoder().encode(challengeId + ':');
-      const buf = new ArrayBuffer(data.byteLength + 16);
-      new Uint8Array(buf).set(data);
-      const view = new DataView(buf);
-      view.setUint32(data.length, 0);
-      view.setUint32(data.length + 4, 0);
-      view.setUint32(data.length + 8, 0);
-      view.setUint32(data.length + 12, 0);
       let nonce = 0;
       const t0 = performance.now();
       while (true) {
-        view.setUint32(data.length, nonce);
-        const hash = await crypto.subtle.digest('SHA-256', buf);
+        const input = challengeId + ':' + nonce;
+        const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
         const hex = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
         if (hex.startsWith(prefix)) {
           const elapsed = performance.now() - t0;

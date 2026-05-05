@@ -5,7 +5,7 @@ import { siteConfig } from "../db/schema/site-config";
 import { authMiddleware, adminMiddleware } from "../auth/middleware";
 import { ContentfulManagement } from "../services/contentful-management";
 import { ensureContentTypes, pushToContentful } from "../services/snapshot";
-import { serviceUnavailable } from "../lib/errors";
+import { serviceUnavailable, conflict } from "../lib/errors";
 
 export const siteConfigRoute = new Hono<LeapifyEnv>();
 
@@ -58,24 +58,40 @@ siteConfigRoute.patch("/:key", authMiddleware, adminMiddleware, async (c) => {
 
 // POST /config/sync-content — admin only
 // Auto-generates content types in Contentful if missing, then pushes all D1 content.
+// Uses a KV lock to prevent concurrent syncs.
+const SYNC_LOCK_KEY = 'contentful:sync:lock'
+const SYNC_LOCK_TTL = 60 // seconds
+
 siteConfigRoute.post("/sync-content", authMiddleware, adminMiddleware, async (c) => {
   if (!ContentfulManagement.isConfigured(c.env.CONTENTFUL_SPACE_ID, c.env.CONTENTFUL_MANAGEMENT_TOKEN)) {
     throw serviceUnavailable('Contentful Management API credentials not configured.')
   }
 
-  const mgmt = new ContentfulManagement(
-    c.env.CONTENTFUL_SPACE_ID!,
-    c.env.CONTENTFUL_MANAGEMENT_TOKEN!,
-    c.env.CONTENTFUL_ENVIRONMENT,
-  )
+  // Idempotency guard: prevent concurrent syncs
+  const existingLock = await c.env.KV.get(SYNC_LOCK_KEY)
+  if (existingLock) {
+    throw conflict('A sync is already in progress. Please wait and try again.')
+  }
+  await c.env.KV.put(SYNC_LOCK_KEY, '1', { expirationTtl: SYNC_LOCK_TTL })
 
-  const db = createDb(c.env.DB)
+  try {
+    const mgmt = new ContentfulManagement(
+      c.env.CONTENTFUL_SPACE_ID!,
+      c.env.CONTENTFUL_MANAGEMENT_TOKEN!,
+      c.env.CONTENTFUL_ENVIRONMENT,
+    )
 
-  // Auto-generate content types if they don't exist
-  await ensureContentTypes(mgmt, {})
+    const db = createDb(c.env.DB)
 
-  // Push all D1 content to Contentful
-  const result = await pushToContentful(db, mgmt, {})
+    // Auto-generate content types if they don't exist
+    await ensureContentTypes(mgmt, {})
 
-  return c.json({ data: result })
+    // Push all D1 content to Contentful (skip unchanged entities)
+    const result = await pushToContentful(db, mgmt, {}, c.env.KV)
+
+    return c.json({ data: result })
+  } finally {
+    // Release lock
+    await c.env.KV.delete(SYNC_LOCK_KEY)
+  }
 });

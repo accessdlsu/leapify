@@ -3,11 +3,13 @@
  *
  * Pulls published content from Contentful, downloads images into R2
  * (with SHA-256 dedup to skip unchanged files), and upserts rows into D1.
+ * Caches fetched Contentful entries in KV to reduce API strain.
  *
  * Called by the `snapshot_content` queue handler and the admin sync endpoint.
  */
 
-import type { R2Bucket } from '@cloudflare/workers-types'
+import type { R2Bucket, KVNamespace } from '@cloudflare/workers-types'
+import { eq } from 'drizzle-orm'
 import { ContentfulService, type ContentfulEntry, type ContentfulAsset } from './contentful'
 import { ContentfulManagement } from './contentful-management'
 import type { LeapifyDb } from '../db'
@@ -111,20 +113,25 @@ const DEFAULT_FIELDS: SnapshotConfig['fields'] = {
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
+const CONTENTFUL_CACHE_PREFIX = 'contentful:cache'
+const CONTENTFUL_CACHE_TTL = 300 // 5 minutes
+
 /**
  * Run a full Contentful → D1 + R2 snapshot.
  *
- * 1. Fetches all themes, events, and FAQs from Contentful.
+ * 1. Fetches all themes, events, and FAQs from Contentful (or KV cache).
  * 2. For each image asset: downloads from Contentful CDN, computes SHA-256,
  *    checks R2 for an existing object with the same SHA, and skips the upload
  *    if unchanged (dedup).
  * 3. Upserts all entries into D1.
+ * 4. Caches fetched Contentful entries in KV for 5 minutes.
  */
 export async function snapshotAllContent(
   db: LeapifyDb,
   bucket: R2Bucket | undefined,
   contentful: ContentfulService,
   config: Partial<SnapshotConfig> = {},
+  kv?: KVNamespace,
 ): Promise<SnapshotResult> {
   const mergedConfig: SnapshotConfig = {
     eventTypeId: config.eventTypeId ?? 'event',
@@ -157,28 +164,63 @@ export async function snapshotAllContent(
     }
   }
 
-  // 1. Sync themes
+  // 1. Sync themes (check KV cache first)
   try {
-    const themeEntries = await contentful.getEntries(mergedConfig.themeTypeId)
+    const cacheKey = `${CONTENTFUL_CACHE_PREFIX}:themes`
+    let themeEntries: ContentfulEntry[]
+    if (kv) {
+      const cached = await kv.get<ContentfulEntry[]>(cacheKey, 'json')
+      if (cached) {
+        themeEntries = cached
+      } else {
+        themeEntries = await contentful.getEntries(mergedConfig.themeTypeId)
+        await kv.put(cacheKey, JSON.stringify(themeEntries), { expirationTtl: CONTENTFUL_CACHE_TTL })
+      }
+    } else {
+      themeEntries = await contentful.getEntries(mergedConfig.themeTypeId)
+    }
     result.themesSynced = await syncThemes(db, themeEntries, mergedConfig)
   } catch (err) {
     result.errors.push(`Themes sync failed: ${err}`)
   }
 
   // Build a Contentful asset ID → theme ID map for event FK resolution
-  // (not needed for themes themselves, but useful if events reference themes by CF ID)
 
-  // 2. Sync events
+  // 2. Sync events (check KV cache first)
   try {
-    const eventEntries = await contentful.getEntries(mergedConfig.eventTypeId)
+    const cacheKey = `${CONTENTFUL_CACHE_PREFIX}:events`
+    let eventEntries: ContentfulEntry[]
+    if (kv) {
+      const cached = await kv.get<ContentfulEntry[]>(cacheKey, 'json')
+      if (cached) {
+        eventEntries = cached
+      } else {
+        eventEntries = await contentful.getEntries(mergedConfig.eventTypeId)
+        await kv.put(cacheKey, JSON.stringify(eventEntries), { expirationTtl: CONTENTFUL_CACHE_TTL })
+      }
+    } else {
+      eventEntries = await contentful.getEntries(mergedConfig.eventTypeId)
+    }
     result.eventsSynced = await syncEvents(db, bucket, contentful, allAssets, eventEntries, mergedConfig, result)
   } catch (err) {
     result.errors.push(`Events sync failed: ${err}`)
   }
 
-  // 3. Sync FAQs
+  // 3. Sync FAQs (check KV cache first)
   try {
-    const faqEntries = await contentful.getEntries(mergedConfig.faqTypeId)
+    const cacheKey = `${CONTENTFUL_CACHE_PREFIX}:faqs`
+    let faqEntries: ContentfulEntry[]
+    if (kv) {
+      const cached = await kv.get<ContentfulEntry[]>(cacheKey, 'json')
+      if (cached) {
+        faqEntries = cached
+      } else {
+        faqEntries = await contentful.getEntries(mergedConfig.faqTypeId)
+        await kv.put(cacheKey, JSON.stringify(faqEntries), { expirationTtl: CONTENTFUL_CACHE_TTL })
+      }
+    } else {
+      faqEntries = await contentful.getEntries(mergedConfig.faqTypeId)
+    }
     result.faqsSynced = await syncFaqs(db, faqEntries, mergedConfig)
   } catch (err) {
     result.errors.push(`FAQs sync failed: ${err}`)
@@ -429,6 +471,24 @@ async function uploadAssetIfChanged(
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/**
+ * Run async tasks in batches with concurrency limit.
+ * Returns settled results so partial failures don't abort the batch.
+ */
+async function batchRun<T>(
+  items: T[],
+  fn: (item: T) => Promise<void>,
+  concurrency = 5,
+): Promise<PromiseSettledResult<void>[]> {
+  const results: PromiseSettledResult<void>[] = []
+  for (let i = 0; i < items.length; i += concurrency) {
+    const batch = items.slice(i, i + concurrency)
+    const settled = await Promise.allSettled(batch.map(fn))
+    results.push(...settled)
+  }
+  return results
+}
+
 async function computeSha256(data: ArrayBuffer): Promise<string> {
   const hashBuffer = await crypto.subtle.digest('SHA-256', data)
   return Array.from(new Uint8Array(hashBuffer))
@@ -490,7 +550,6 @@ export async function ensureContentTypes(
     { id: 'price', name: 'Price', type: 'Symbol' },
     { id: 'backgroundColor', name: 'Background Color', type: 'Symbol' },
     { id: 'image', name: 'Image', type: 'Link', linkType: 'Asset' },
-    { id: 'subtheme', name: 'Subtheme', type: 'Symbol' },
     { id: 'isMajor', name: 'Major Event', type: 'Boolean' },
     { id: 'maxSlots', name: 'Max Slots', type: 'Integer' },
     { id: 'gformsUrl', name: 'Google Forms URL', type: 'Symbol' },
@@ -510,18 +569,21 @@ export async function ensureContentTypes(
 
 // ─── D1 → Contentful push ───────────────────────────────────────────────────
 
+const LAST_PUSH_KV_KEY = 'contentful:last_push'
+
 /**
- * Push all D1 content to Contentful.
- * Creates/updates entries in Contentful and publishes them.
- * Images are NOT uploaded to Contentful — they stay in R2.
+ * Push D1 content to Contentful, skipping entities that haven't changed
+ * since the last successful push.
  *
- * This is the primary sync direction: admin console writes to D1,
- * then this function pushes to Contentful for CMS features.
+ * Uses KV to store the last push timestamp. If `forceFull` is true,
+ * pushes all entities regardless of changes.
  */
 export async function pushToContentful(
   db: LeapifyDb,
   mgmt: ContentfulManagement,
   config: Partial<SnapshotConfig> = {},
+  kv?: KVNamespace,
+  forceFull = false,
 ): Promise<SnapshotResult> {
   const eventTypeId = config.eventTypeId ?? 'event'
   const themeTypeId = config.themeTypeId ?? 'theme'
@@ -536,7 +598,14 @@ export async function pushToContentful(
     errors: [],
   }
 
-  // 1. Push themes
+  // Get last push timestamp from KV
+  let lastPushTs = 0
+  if (kv && !forceFull) {
+    const stored = await kv.get(LAST_PUSH_KV_KEY)
+    if (stored) lastPushTs = Number(stored) || 0
+  }
+
+  // 1. Push themes (small set — always push all)
   try {
     const dbThemes = await db.query.themes.findMany()
     for (const theme of dbThemes) {
@@ -555,62 +624,85 @@ export async function pushToContentful(
     result.errors.push(`Themes fetch failed: ${err}`)
   }
 
-  // 2. Push events
+  // 2. Push events (only changed since last push, concurrent batches)
   try {
-    const dbEvents = await db.query.events.findMany()
-    for (const event of dbEvents) {
-      try {
-        const fields: Record<string, Record<string, unknown>> = {
-          title: ContentfulManagement.locale(event.title),
-          slug: ContentfulManagement.locale(event.slug),
-          isMajor: ContentfulManagement.locale(event.isMajor),
-          maxSlots: ContentfulManagement.locale(event.maxSlots),
-        }
+    const dbEvents = lastPushTs > 0
+      ? await db.query.events.findMany()
+        .then((all) => all.filter((e) => {
+          if (e.createdAt >= lastPushTs) return true
+          if (e.publishedAt && e.publishedAt >= lastPushTs) return true
+          if (!e.contentfulEntryId) return true
+          return false
+        }))
+      : await db.query.events.findMany()
 
-        if (event.themeId) fields.theme = ContentfulManagement.entryRef(event.themeId)
-        if (event.org) fields.org = ContentfulManagement.locale(event.org)
-        if (event.venue) fields.venue = ContentfulManagement.locale(event.venue)
-        if (event.dateTime) fields.dateTime = ContentfulManagement.locale(event.dateTime)
-        if (event.price) fields.price = ContentfulManagement.locale(event.price)
-        if (event.backgroundColor) fields.backgroundColor = ContentfulManagement.locale(event.backgroundColor)
-        if (event.subtheme) fields.subtheme = ContentfulManagement.locale(event.subtheme)
-        if (event.gformsUrl) fields.gformsUrl = ContentfulManagement.locale(event.gformsUrl)
-
-        // Date fields — Contentful expects ISO strings
-        if (event.startsAt) fields.startsAt = ContentfulManagement.locale(new Date(event.startsAt * 1000).toISOString())
-        if (event.endsAt) fields.endsAt = ContentfulManagement.locale(new Date(event.endsAt * 1000).toISOString())
-        if (event.registrationOpensAt) fields.registrationOpensAt = ContentfulManagement.locale(new Date(event.registrationOpensAt * 1000).toISOString())
-        if (event.registrationClosesAt) fields.registrationClosesAt = ContentfulManagement.locale(new Date(event.registrationClosesAt * 1000).toISOString())
-
-        await mgmt.upsertEntry(eventTypeId, event.id, fields)
-        result.eventsSynced++
-      } catch (err) {
-        result.errors.push(`Event ${event.id}: ${err}`)
+    await batchRun(dbEvents, async (event) => {
+      const fields: Record<string, Record<string, unknown>> = {
+        title: ContentfulManagement.locale(event.title),
+        slug: ContentfulManagement.locale(event.slug),
+        isMajor: ContentfulManagement.locale(event.isMajor),
+        maxSlots: ContentfulManagement.locale(event.maxSlots),
       }
-    }
+
+      if (event.themeId) fields.theme = ContentfulManagement.entryRef(event.themeId)
+      if (event.org) fields.org = ContentfulManagement.locale(event.org)
+      if (event.venue) fields.venue = ContentfulManagement.locale(event.venue)
+      if (event.dateTime) fields.dateTime = ContentfulManagement.locale(event.dateTime)
+      if (event.price) fields.price = ContentfulManagement.locale(event.price)
+      if (event.backgroundColor) fields.backgroundColor = ContentfulManagement.locale(event.backgroundColor)
+      if (event.subtheme) fields.subtheme = ContentfulManagement.locale(event.subtheme)
+      if (event.gformsUrl) fields.gformsUrl = ContentfulManagement.locale(event.gformsUrl)
+
+      if (event.startsAt) fields.startsAt = ContentfulManagement.locale(new Date(event.startsAt * 1000).toISOString())
+      if (event.endsAt) fields.endsAt = ContentfulManagement.locale(new Date(event.endsAt * 1000).toISOString())
+      if (event.registrationOpensAt) fields.registrationOpensAt = ContentfulManagement.locale(new Date(event.registrationOpensAt * 1000).toISOString())
+      if (event.registrationClosesAt) fields.registrationClosesAt = ContentfulManagement.locale(new Date(event.registrationClosesAt * 1000).toISOString())
+
+      await mgmt.upsertEntry(eventTypeId, event.id, fields)
+
+      // Store Contentful entry ID if not yet set
+      if (!event.contentfulEntryId) {
+        await db
+          .update(events)
+          .set({ contentfulEntryId: event.id })
+          .where(eq(events.id, event.id))
+      }
+
+      result.eventsSynced++
+    })
   } catch (err) {
     result.errors.push(`Events fetch failed: ${err}`)
   }
 
-  // 3. Push FAQs
+  // 3. Push FAQs (only changed since last push, concurrent batches)
   try {
-    const dbFaqs = await db.query.faqs.findMany()
-    for (const faq of dbFaqs) {
-      try {
-        await mgmt.upsertEntry(faqTypeId, faq.id, {
-          question: ContentfulManagement.locale(faq.question),
-          answer: ContentfulManagement.locale(faq.answer),
-          category: ContentfulManagement.locale(faq.category),
-          sortOrder: ContentfulManagement.locale(faq.sortOrder),
-          isActive: ContentfulManagement.locale(faq.isActive),
-        })
-        result.faqsSynced++
-      } catch (err) {
-        result.errors.push(`FAQ ${faq.id}: ${err}`)
-      }
-    }
+    const dbFaqs = lastPushTs > 0
+      ? await db.query.faqs.findMany()
+        .then((all) => all.filter((faq) => {
+          if (faq.updatedAt >= lastPushTs) return true
+          if (faq.createdAt >= lastPushTs) return true
+          return false
+        }))
+      : await db.query.faqs.findMany()
+
+    await batchRun(dbFaqs, async (faq) => {
+      await mgmt.upsertEntry(faqTypeId, faq.id, {
+        question: ContentfulManagement.locale(faq.question),
+        answer: ContentfulManagement.locale(faq.answer),
+        category: ContentfulManagement.locale(faq.category),
+        sortOrder: ContentfulManagement.locale(faq.sortOrder),
+        isActive: ContentfulManagement.locale(faq.isActive),
+      })
+      result.faqsSynced++
+    })
   } catch (err) {
     result.errors.push(`FAQs fetch failed: ${err}`)
+  }
+
+  // Store new last push timestamp in KV
+  if (kv) {
+    const now = Math.floor(Date.now() / 1000)
+    await kv.put(LAST_PUSH_KV_KEY, String(now))
   }
 
   console.log(

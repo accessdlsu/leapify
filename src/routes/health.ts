@@ -3,35 +3,256 @@ import type { LeapifyEnv } from '../types'
 
 export const healthRoute = new Hono<LeapifyEnv>()
 
+// ─── Individual service probes ──────────────────────────────────────────────
+
+interface ServiceHealth {
+  configured: boolean
+  ok: boolean
+  latencyMs: number
+  error?: string
+}
+
+async function probeResend(apiKey: string): Promise<ServiceHealth> {
+  const start = Date.now()
+  try {
+    const res = await fetch('https://api.resend.com/domains', {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    })
+    return {
+      configured: true,
+      ok: res.ok,
+      latencyMs: Date.now() - start,
+      ...(res.ok ? {} : { error: `HTTP ${res.status}` }),
+    }
+  } catch (e) {
+    return {
+      configured: true,
+      ok: false,
+      latencyMs: Date.now() - start,
+      error: String(e),
+    }
+  }
+}
+
+async function probeSes(
+  region: string,
+  accessKeyId: string,
+  secretAccessKey: string,
+): Promise<ServiceHealth> {
+  // SES v2 has no lightweight "ping" endpoint. Verify credentials are
+  // configured and the region is valid by checking the env vars.
+  const start = Date.now()
+  try {
+    if (!region || !accessKeyId || !secretAccessKey) {
+      return {
+        configured: false,
+        ok: false,
+        latencyMs: Date.now() - start,
+        error: 'Missing SES credentials',
+      }
+    }
+    return {
+      configured: true,
+      ok: true,
+      latencyMs: Date.now() - start,
+    }
+  } catch (e) {
+    return {
+      configured: true,
+      ok: false,
+      latencyMs: Date.now() - start,
+      error: String(e),
+    }
+  }
+}
+
+async function probeContentful(
+  spaceId: string,
+  accessToken: string,
+  environment: string,
+): Promise<ServiceHealth> {
+  const start = Date.now()
+  try {
+    const res = await fetch(
+      `https://cdn.contentful.com/spaces/${spaceId}/environments/${environment}/entries?limit=0`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    )
+    return {
+      configured: true,
+      ok: res.ok,
+      latencyMs: Date.now() - start,
+      ...(res.ok ? {} : { error: `HTTP ${res.status}` }),
+    }
+  } catch (e) {
+    return {
+      configured: true,
+      ok: false,
+      latencyMs: Date.now() - start,
+      error: String(e),
+    }
+  }
+}
+
+async function probeGForms(
+  serviceAccountJson: string,
+): Promise<ServiceHealth> {
+  const start = Date.now()
+  try {
+    const creds = JSON.parse(serviceAccountJson) as {
+      client_email: string
+      private_key: string
+    }
+
+    // Try to get an OAuth2 token — verifies the SA key is valid
+    const now = Math.floor(Date.now() / 1000)
+    const claims = {
+      iss: creds.client_email,
+      scope: 'https://www.googleapis.com/auth/forms.responses.readonly',
+      aud: 'https://oauth2.googleapis.com/token',
+      iat: now,
+      exp: now + 3600,
+    }
+
+    const header = { alg: 'RS256', typ: 'JWT' }
+    const encode = (obj: unknown) =>
+      btoa(JSON.stringify(obj))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=/g, '')
+
+    const signingInput = `${encode(header)}.${encode(claims)}`
+
+    const pemBody = creds.private_key
+      .replace(/-----BEGIN PRIVATE KEY-----/, '')
+      .replace(/-----END PRIVATE KEY-----/, '')
+      .replace(/\s/g, '')
+
+    const keyBytes = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0))
+    const privateKey = await crypto.subtle.importKey(
+      'pkcs8',
+      keyBytes,
+      { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+      false,
+      ['sign'],
+    )
+
+    const signature = await crypto.subtle.sign(
+      'RSASSA-PKCS1-v1_5',
+      privateKey,
+      new TextEncoder().encode(signingInput),
+    )
+
+    const sigB64 = btoa(String.fromCharCode(...new Uint8Array(signature)))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=/g, '')
+
+    const jwt = `${signingInput}.${sigB64}`
+
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        assertion: jwt,
+      }),
+    })
+
+    return {
+      configured: true,
+      ok: res.ok,
+      latencyMs: Date.now() - start,
+      ...(res.ok ? {} : { error: `HTTP ${res.status}` }),
+    }
+  } catch (e) {
+    return {
+      configured: true,
+      ok: false,
+      latencyMs: Date.now() - start,
+      error: String(e),
+    }
+  }
+}
+
+// ─── Route ──────────────────────────────────────────────────────────────────
+
 /**
  * GET /health
  *
- * Publicly accessible — no CORS restriction, no auth.
- * Used by uptime monitors, load balancers, and CF Health Checks.
+ * Publicly accessible — no CORS, no auth, no PoW.
+ * Runs lightweight probes against each configured external service.
  *
- * Response shape:
- *   { status: 'ok', timestamp: string, providers: { ses: boolean, resend: boolean } }
- *
- * `providers` reflects which email providers are configured in this Worker
- * so operators can confirm secrets were set correctly after deploy.
+ * Response:
+ *   {
+ *     status: 'ok' | 'degraded',
+ *     timestamp: string,
+ *     services: {
+ *       ses:       { configured, ok, latencyMs, error? },
+ *       resend:    { configured, ok, latencyMs, error? },
+ *       contentful: { configured, ok, latencyMs, error? },
+ *       gforms:    { configured, ok, latencyMs, error? },
+ *     }
+ *   }
  */
-healthRoute.get('/', (c) => {
-  const hasSes =
-    Boolean(c.env.SES_REGION) &&
-    Boolean(c.env.SES_ACCESS_KEY_ID) &&
-    Boolean(c.env.SES_SECRET_ACCESS_KEY)
+healthRoute.get('/', async (c) => {
+  const env = c.env
 
-  const hasResend = Boolean(c.env.RESEND_API_KEY)
+  const hasSes = Boolean(env.SES_REGION) && Boolean(env.SES_ACCESS_KEY_ID) && Boolean(env.SES_SECRET_ACCESS_KEY)
+  const hasResend = Boolean(env.RESEND_API_KEY)
+  const hasContentful = Boolean(env.CONTENTFUL_SPACE_ID) && Boolean(env.CONTENTFUL_ACCESS_TOKEN)
+  const hasGForms = Boolean(env.GFORMS_SERVICE_ACCOUNT_JSON)
+
+  const probes: Promise<[string, ServiceHealth]>[] = []
+
+  if (hasSes) {
+    probes.push(
+      probeSes(env.SES_REGION!, env.SES_ACCESS_KEY_ID!, env.SES_SECRET_ACCESS_KEY!).then(
+        (h) => ['ses', h] as const,
+      ),
+    )
+  }
+  if (hasResend) {
+    probes.push(
+      probeResend(env.RESEND_API_KEY!).then((h) => ['resend', h] as const),
+    )
+  }
+  if (hasContentful) {
+    probes.push(
+      probeContentful(
+        env.CONTENTFUL_SPACE_ID!,
+        env.CONTENTFUL_ACCESS_TOKEN!,
+        env.CONTENTFUL_ENVIRONMENT || 'master',
+      ).then((h) => ['contentful', h] as const),
+    )
+  }
+  if (hasGForms) {
+    probes.push(
+      probeGForms(env.GFORMS_SERVICE_ACCOUNT_JSON!).then(
+        (h) => ['gforms', h] as const,
+      ),
+    )
+  }
+
+  const results = await Promise.all(probes)
+
+  const services: Record<string, ServiceHealth> = {}
+  for (const [name, health] of results) {
+    services[name] = health
+  }
+
+  // If no services are configured, still report ok
+  const allOk = results.length === 0 || results.every(([, h]) => h.ok)
 
   return c.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    providers: {
-      ses: hasSes,
-      resend: hasResend,
+    data: {
+      status: allOk ? 'OK' : 'DEGRADED',
+      timestamp: new Date().toISOString(),
+      services,
     },
   })
 })
+
+// ─── Queue burst (internal) ─────────────────────────────────────────────────
 
 /**
  * POST /health/queue-burst
@@ -39,25 +260,21 @@ healthRoute.get('/', (c) => {
  */
 healthRoute.post('/queue-burst', async (c) => {
   if (!c.env.EMAIL_QUEUE) {
-    return c.json({ error: "Queue binding missing" }, 400);
+    return c.json({ error: 'Queue binding missing' }, 400)
   }
 
-  // Cloudflare Queue sendBatch takes a maximum of 100 messages at a time.
-  // We use the 'audit_log' job type so it mocks everything instantly and 
-  // avoids touching the physical SES email limits entirely!
   const batch = Array.from({ length: 100 }, (_, i) => ({
     body: {
-      type: "audit_log",
+      type: 'audit_log',
       payload: {
-        action: "queue_load_test",
-        userId: "system",
-        meta: { index: i, time: Date.now() }
-      }
-    }
-  }));
+        action: 'queue_load_test',
+        userId: 'system',
+        meta: { index: i, time: Date.now() },
+      },
+    },
+  }))
 
-  // Typecast safely for Hono CF bindings
-  await (c.env.EMAIL_QUEUE as any).sendBatch(batch);
+  await (c.env.EMAIL_QUEUE as any).sendBatch(batch)
 
-  return c.json({ status: "queued", count: 100 });
-});
+  return c.json({ status: 'queued', count: 100 })
+})

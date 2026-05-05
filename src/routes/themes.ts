@@ -7,11 +7,70 @@ import { createDb } from '../db'
 import { themes } from '../db/schema/themes'
 import { authMiddleware, adminMiddleware } from '../auth/middleware'
 import { notFound, conflict } from '../lib/errors'
+import { ContentfulManagement } from '../services/contentful-management'
+
+const CF_THEME_CT = 'theme'
+
+/**
+ * Push a single theme to Contentful in the background.
+ * No-op if Contentful Management API is not configured.
+ */
+async function pushThemeToContentful(env: LeapifyEnv['Bindings'], theme: typeof themes.$inferSelect) {
+  if (!ContentfulManagement.isConfigured(env.CONTENTFUL_SPACE_ID, env.CONTENTFUL_MANAGEMENT_TOKEN)) return
+
+  const mgmt = new ContentfulManagement(
+    env.CONTENTFUL_SPACE_ID!,
+    env.CONTENTFUL_MANAGEMENT_TOKEN!,
+    env.CONTENTFUL_ENVIRONMENT,
+  )
+
+  try {
+    await mgmt.upsertEntry(CF_THEME_CT, theme.id, {
+      name: ContentfulManagement.locale(theme.name),
+      path: ContentfulManagement.locale(theme.path),
+      color: ContentfulManagement.locale(theme.color),
+    })
+  } catch (err) {
+    console.warn(`[Contentful] Failed to sync theme ${theme.id}:`, err)
+  }
+}
+
+/**
+ * Delete a theme entry from Contentful in the background.
+ */
+async function deleteThemeFromContentful(env: LeapifyEnv['Bindings'], themeId: string) {
+  if (!ContentfulManagement.isConfigured(env.CONTENTFUL_SPACE_ID, env.CONTENTFUL_MANAGEMENT_TOKEN)) return
+
+  const mgmt = new ContentfulManagement(
+    env.CONTENTFUL_SPACE_ID!,
+    env.CONTENTFUL_MANAGEMENT_TOKEN!,
+    env.CONTENTFUL_ENVIRONMENT,
+  )
+
+  try {
+    const entry = await mgmt.getEntry(themeId)
+    if (entry) {
+      // Unpublish then delete
+      const url = `https://api.contentful.com/spaces/${env.CONTENTFUL_SPACE_ID}/environments/${env.CONTENTFUL_ENVIRONMENT || 'master'}/entries/${themeId}/published`
+      await fetch(url, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${env.CONTENTFUL_MANAGEMENT_TOKEN}`, 'X-Contentful-Version': String(entry.sys.version ?? 1) },
+      })
+      const deleteUrl = `https://api.contentful.com/spaces/${env.CONTENTFUL_SPACE_ID}/environments/${env.CONTENTFUL_ENVIRONMENT || 'master'}/entries/${themeId}`
+      await fetch(deleteUrl, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${env.CONTENTFUL_MANAGEMENT_TOKEN}`, 'X-Contentful-Version': String((entry.sys.version ?? 1) + 1) },
+      })
+    }
+  } catch (err) {
+    console.warn(`[Contentful] Failed to delete theme ${themeId} from Contentful:`, err)
+  }
+}
 
 const createThemeSchema = z.object({
   name: z.string().min(1),
   path: z.string().min(1),
-  color: z.string().optional(),
+  color: z.string().nullable().optional(),
 })
 
 export const themesRoute = new Hono<LeapifyEnv>()
@@ -35,6 +94,7 @@ themesRoute.post(
 
     try {
       const [created] = await db.insert(themes).values(body).returning()
+      c.executionCtx.waitUntil(pushThemeToContentful(c.env, created))
       return c.json({ data: created }, 201)
     } catch (err: any) {
       if (err.message && err.message.includes('UNIQUE constraint failed')) {
@@ -64,6 +124,7 @@ themesRoute.patch(
 
       if (!updated) throw notFound('Theme')
 
+      c.executionCtx.waitUntil(pushThemeToContentful(c.env, updated))
       return c.json({ data: updated })
     } catch (err: any) {
       if (err.message && err.message.includes('UNIQUE constraint failed')) {
@@ -83,5 +144,6 @@ themesRoute.delete('/:id', authMiddleware, adminMiddleware, async (c) => {
 
   if (!deleted) throw notFound('Theme')
 
+  c.executionCtx.waitUntil(deleteThemeFromContentful(c.env, id))
   return c.body(null, 204)
 })
