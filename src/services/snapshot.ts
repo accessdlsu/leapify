@@ -16,6 +16,7 @@ import type { LeapifyDb } from '../db'
 import { themes } from '../db/schema/themes'
 import { events } from '../db/schema/events'
 import { faqs } from '../db/schema/faqs'
+import { organizations } from '../db/schema/organizations'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -23,37 +24,41 @@ export interface SnapshotConfig {
   eventTypeId: string
   themeTypeId: string
   faqTypeId: string
+  organizationTypeId: string
   fields: {
     event: {
       title: string
       slug: string
       theme: string
-      org: string
+      organization: string
       venue: string
-      dateTime: string
-      startsAt: string
-      endsAt: string
+      date: string
+      startTime: string
+      endTime: string
       price: string
-      backgroundColor: string
       image: string
-      subtheme: string
       isMajor: string
       maxSlots: string
       gformsUrl: string
-      registrationOpensAt: string
+      gformsEditorUrl: string
       registrationClosesAt: string
+      classCode: string
     }
     theme: {
       name: string
       path: string
-      color: string
     }
     faq: {
       question: string
       answer: string
       category: string
       sortOrder: string
-      isActive: string
+    }
+    organization: {
+      name: string
+      acronym: string
+      logoUrl: string
+      link: string
     }
     siteConfig: {
       key: string
@@ -66,6 +71,7 @@ export interface SnapshotResult {
   themesSynced: number
   eventsSynced: number
   faqsSynced: number
+  organizationsSynced: number
   imagesUploaded: number
   imagesSkipped: number
   errors: string[]
@@ -78,32 +84,35 @@ const DEFAULT_FIELDS: SnapshotConfig['fields'] = {
     title: 'title',
     slug: 'slug',
     theme: 'theme',
-    org: 'org',
+    organization: 'organization',
     venue: 'venue',
-    dateTime: 'dateTime',
-    startsAt: 'startsAt',
-    endsAt: 'endsAt',
+    date: 'date',
+    startTime: 'startTime',
+    endTime: 'endTime',
     price: 'price',
-    backgroundColor: 'backgroundColor',
     image: 'image',
-    subtheme: 'subtheme',
     isMajor: 'isMajor',
     maxSlots: 'maxSlots',
     gformsUrl: 'gformsUrl',
-    registrationOpensAt: 'registrationOpensAt',
+    gformsEditorUrl: 'gformsEditorUrl',
     registrationClosesAt: 'registrationClosesAt',
+    classCode: 'classCode',
   },
   theme: {
     name: 'name',
     path: 'path',
-    color: 'color',
   },
   faq: {
     question: 'question',
     answer: 'answer',
     category: 'category',
     sortOrder: 'sortOrder',
-    isActive: 'isActive',
+  },
+  organization: {
+    name: 'name',
+    acronym: 'acronym',
+    logoUrl: 'logoUrl',
+    link: 'link',
   },
   siteConfig: {
     key: 'key',
@@ -137,10 +146,12 @@ export async function snapshotAllContent(
     eventTypeId: config.eventTypeId ?? 'event',
     themeTypeId: config.themeTypeId ?? 'theme',
     faqTypeId: config.faqTypeId ?? 'faq',
+    organizationTypeId: config.organizationTypeId ?? 'organization',
     fields: {
       event: { ...DEFAULT_FIELDS.event, ...config.fields?.event },
       theme: { ...DEFAULT_FIELDS.theme, ...config.fields?.theme },
       faq: { ...DEFAULT_FIELDS.faq, ...config.fields?.faq },
+      organization: { ...DEFAULT_FIELDS.organization, ...config.fields?.organization },
       siteConfig: { ...DEFAULT_FIELDS.siteConfig, ...config.fields?.siteConfig },
     },
   }
@@ -149,6 +160,7 @@ export async function snapshotAllContent(
     themesSynced: 0,
     eventsSynced: 0,
     faqsSynced: 0,
+    organizationsSynced: 0,
     imagesUploaded: 0,
     imagesSkipped: 0,
     errors: [],
@@ -185,6 +197,26 @@ export async function snapshotAllContent(
   }
 
   // Build a Contentful asset ID → theme ID map for event FK resolution
+
+  // 1b. Sync organizations (check KV cache first)
+  try {
+    const cacheKey = `${CONTENTFUL_CACHE_PREFIX}:organizations`
+    let orgEntries: ContentfulEntry[]
+    if (kv) {
+      const cached = await kv.get<ContentfulEntry[]>(cacheKey, 'json')
+      if (cached) {
+        orgEntries = cached
+      } else {
+        orgEntries = await contentful.getEntries(mergedConfig.organizationTypeId)
+        await kv.put(cacheKey, JSON.stringify(orgEntries), { expirationTtl: CONTENTFUL_CACHE_TTL })
+      }
+    } else {
+      orgEntries = await contentful.getEntries(mergedConfig.organizationTypeId)
+    }
+    await syncOrganizations(db, orgEntries, mergedConfig)
+  } catch (err) {
+    result.errors.push(`Organizations sync failed: ${err}`)
+  }
 
   // 2. Sync events (check KV cache first)
   try {
@@ -227,7 +259,7 @@ export async function snapshotAllContent(
   }
 
   console.log(
-    `[Snapshot] Complete: ${result.themesSynced} themes, ${result.eventsSynced} events, ${result.faqsSynced} FAQs, ` +
+    `[Snapshot] Complete: ${result.themesSynced} themes, ${result.organizationsSynced} organizations, ${result.eventsSynced} events, ${result.faqsSynced} FAQs, ` +
     `${result.imagesUploaded} images uploaded, ${result.imagesSkipped} images skipped, ${result.errors.length} errors`,
   )
 
@@ -247,16 +279,49 @@ async function syncThemes(
     const cfId = entry.sys.id
     const name = ContentfulService.getField<string>(entry, config.fields.theme.name)
     const path = ContentfulService.getField<string>(entry, config.fields.theme.path)
-    const color = ContentfulService.getField<string>(entry, config.fields.theme.color) ?? null
 
     if (!name || !path) continue
 
     await db
       .insert(themes)
-      .values({ id: cfId, name, path, color })
+      .values({ id: cfId, name, path })
       .onConflictDoUpdate({
         target: themes.id,
-        set: { name, path, color },
+        set: { name, path },
+      })
+
+    count++
+  }
+
+  return count
+}
+
+// ─── Organization sync ──────────────────────────────────────────────────────
+
+async function syncOrganizations(
+  db: LeapifyDb,
+  entries: ContentfulEntry[],
+  config: SnapshotConfig,
+): Promise<number> {
+  let count = 0
+
+  for (const entry of entries) {
+    const cfId = entry.sys.id
+    const f = config.fields.organization
+
+    const name = ContentfulService.getField<string>(entry, f.name)
+    const acronym = ContentfulService.getField<string>(entry, f.acronym)
+    if (!name || !acronym) continue
+
+    const logoUrl = ContentfulService.getField<string>(entry, f.logoUrl) ?? null
+    const link = ContentfulService.getField<string>(entry, f.link) ?? null
+
+    await db
+      .insert(organizations)
+      .values({ id: cfId, name, acronym, logoUrl, link })
+      .onConflictDoUpdate({
+        target: organizations.id,
+        set: { name, acronym, logoUrl, link },
       })
 
     count++
@@ -298,6 +363,10 @@ async function syncEvents(
       const themeRef = ContentfulService.getField<{ sys: { id: string } }>(entry, f.theme)
       const themeId = themeRef?.sys?.id ?? null
 
+      // Resolve organization FK
+      const orgRef = ContentfulService.getField<{ sys: { id: string } }>(entry, f.organization)
+      const organizationId = orgRef?.sys?.id ?? null
+
       // Handle image asset: download from Contentful CDN, SHA-dedup, upload to R2
       let backgroundImageUrl: string | null = null
       if (bucket) {
@@ -327,34 +396,20 @@ async function syncEvents(
         title,
         slug,
         themeId,
+        organizationId,
         updatedAt: entry.sys.updatedAt,
       }
-
-      const org = ContentfulService.getField<string>(entry, f.org)
-      if (org !== undefined) values.org = org
 
       const venue = ContentfulService.getField<string>(entry, f.venue)
       if (venue !== undefined) values.venue = venue
 
-      const dateTime = ContentfulService.getField<string>(entry, f.dateTime)
-      if (dateTime !== undefined) values.dateTime = dateTime
-
-      const startsAt = parseDateField(entry, f.startsAt)
-      if (startsAt !== undefined) values.startsAt = startsAt
-
-      const endsAt = parseDateField(entry, f.endsAt)
-      if (endsAt !== undefined) values.endsAt = endsAt
+      const date = ContentfulService.getField<string>(entry, f.date)
+      if (date !== undefined) values.dateTime = date
 
       const price = ContentfulService.getField<string>(entry, f.price)
       if (price !== undefined) values.price = price
 
-      const backgroundColor = ContentfulService.getField<string>(entry, f.backgroundColor)
-      if (backgroundColor !== undefined) values.backgroundColor = backgroundColor
-
       if (backgroundImageUrl) values.backgroundImageUrl = backgroundImageUrl
-
-      const subtheme = ContentfulService.getField<string>(entry, f.subtheme)
-      if (subtheme !== undefined) values.subtheme = subtheme
 
       const isMajor = ContentfulService.getField<boolean>(entry, f.isMajor)
       if (isMajor !== undefined) values.isMajor = isMajor
@@ -365,11 +420,23 @@ async function syncEvents(
       const gformsUrl = ContentfulService.getField<string>(entry, f.gformsUrl)
       if (gformsUrl !== undefined) values.gformsUrl = gformsUrl
 
-      const registrationOpensAt = parseDateField(entry, f.registrationOpensAt)
-      if (registrationOpensAt !== undefined) values.registrationOpensAt = registrationOpensAt
+      const gformsEditorUrl = ContentfulService.getField<string>(entry, f.gformsEditorUrl)
+      if (gformsEditorUrl !== undefined) values.gformsEditorUrl = gformsEditorUrl
 
-      const registrationClosesAt = parseDateField(entry, f.registrationClosesAt)
-      if (registrationClosesAt !== undefined) values.registrationClosesAt = registrationClosesAt
+      const classCode = ContentfulService.getField<string>(entry, f.classCode)
+      if (classCode !== undefined) values.classCode = classCode
+
+      const startTime = ContentfulService.getField<string>(entry, f.startTime)
+      if (startTime !== undefined) values.startTime = startTime
+
+      const endTime = ContentfulService.getField<string>(entry, f.endTime)
+      if (endTime !== undefined) values.endTime = endTime
+
+      const regCloseRaw = ContentfulService.getField<string>(entry, f.registrationClosesAt)
+      if (regCloseRaw) {
+        const ms = Date.parse(regCloseRaw)
+        if (!Number.isNaN(ms)) values.registrationClosesAt = Math.floor(ms / 1000)
+      }
 
       await db
         .insert(events)
@@ -407,7 +474,6 @@ async function syncFaqs(
 
     const category = ContentfulService.getField<string>(entry, f.category) ?? null
     const sortOrder = ContentfulService.getField<number>(entry, f.sortOrder) ?? 0
-    const isActive = ContentfulService.getField<boolean>(entry, f.isActive) ?? true
 
     await db
       .insert(faqs)
@@ -417,11 +483,10 @@ async function syncFaqs(
         answer,
         category,
         sortOrder,
-        isActive,
       })
       .onConflictDoUpdate({
         target: faqs.id,
-        set: { question, answer, category, sortOrder, isActive },
+        set: { question, answer, category, sortOrder },
       })
 
     count++
@@ -503,17 +568,6 @@ function slugify(text: string): string {
     .replace(/^-|-$/g, '')
 }
 
-/**
- * Parse a Contentful date field into a unix epoch (seconds).
- * Returns undefined if the field is missing or unparseable.
- */
-function parseDateField(entry: ContentfulEntry, fieldName: string): number | undefined {
-  const value = ContentfulService.getField<string>(entry, fieldName)
-  if (!value) return undefined
-  const ms = Date.parse(value)
-  return Number.isNaN(ms) ? undefined : Math.floor(ms / 1000)
-}
-
 // ─── Content type auto-generation ────────────────────────────────────────────
 
 /**
@@ -529,12 +583,12 @@ export async function ensureContentTypes(
   const eventTypeId = config.eventTypeId ?? 'event'
   const themeTypeId = config.themeTypeId ?? 'theme'
   const faqTypeId = config.faqTypeId ?? 'faq'
+  const organizationTypeId = config.organizationTypeId ?? 'organization'
 
   // Theme content type
   await mgmt.ensureContentType(themeTypeId, 'Theme', [
     { id: 'name', name: 'Name', type: 'Symbol', required: true },
     { id: 'path', name: 'Path', type: 'Symbol', required: true },
-    { id: 'color', name: 'Color', type: 'Symbol' },
   ])
 
   // Event content type
@@ -542,19 +596,27 @@ export async function ensureContentTypes(
     { id: 'title', name: 'Title', type: 'Symbol', required: true },
     { id: 'slug', name: 'Slug', type: 'Symbol', required: true },
     { id: 'theme', name: 'Theme', type: 'Link', linkType: 'Entry' },
-    { id: 'org', name: 'Organization', type: 'Symbol' },
+    { id: 'organization', name: 'Organization', type: 'Link', linkType: 'Entry' },
     { id: 'venue', name: 'Venue', type: 'Symbol' },
-    { id: 'dateTime', name: 'Date/Time', type: 'Symbol' },
-    { id: 'startsAt', name: 'Starts At', type: 'Date' },
-    { id: 'endsAt', name: 'Ends At', type: 'Date' },
+    { id: 'date', name: 'Date', type: 'Date' },
+    { id: 'startTime', name: 'Start Time', type: 'Symbol' },
+    { id: 'endTime', name: 'End Time', type: 'Symbol' },
     { id: 'price', name: 'Price', type: 'Symbol' },
-    { id: 'backgroundColor', name: 'Background Color', type: 'Symbol' },
     { id: 'image', name: 'Image', type: 'Link', linkType: 'Asset' },
     { id: 'isMajor', name: 'Major Event', type: 'Boolean' },
     { id: 'maxSlots', name: 'Max Slots', type: 'Integer' },
     { id: 'gformsUrl', name: 'Google Forms URL', type: 'Symbol' },
-    { id: 'registrationOpensAt', name: 'Registration Opens', type: 'Date' },
+    { id: 'gformsEditorUrl', name: 'Google Forms Editor URL', type: 'Symbol' },
     { id: 'registrationClosesAt', name: 'Registration Closes', type: 'Date' },
+    { id: 'classCode', name: 'Class Code', type: 'Symbol' },
+  ])
+
+  // Organization content type
+  await mgmt.ensureContentType(organizationTypeId, 'Organization', [
+    { id: 'name', name: 'Name', type: 'Symbol', required: true },
+    { id: 'acronym', name: 'Acronym', type: 'Symbol', required: true },
+    { id: 'logo', name: 'Logo', type: 'Link', linkType: 'Asset' },
+    { id: 'link', name: 'Link', type: 'Symbol' },
   ])
 
   // FAQ content type
@@ -563,7 +625,6 @@ export async function ensureContentTypes(
     { id: 'answer', name: 'Answer', type: 'Text', required: true },
     { id: 'category', name: 'Category', type: 'Symbol' },
     { id: 'sortOrder', name: 'Sort Order', type: 'Integer' },
-    { id: 'isActive', name: 'Active', type: 'Boolean' },
   ])
 }
 
@@ -588,11 +649,13 @@ export async function pushToContentful(
   const eventTypeId = config.eventTypeId ?? 'event'
   const themeTypeId = config.themeTypeId ?? 'theme'
   const faqTypeId = config.faqTypeId ?? 'faq'
+  const organizationTypeId = config.organizationTypeId ?? 'organization'
 
   const result: SnapshotResult = {
     themesSynced: 0,
     eventsSynced: 0,
     faqsSynced: 0,
+    organizationsSynced: 0,
     imagesUploaded: 0,
     imagesSkipped: 0,
     errors: [],
@@ -613,7 +676,6 @@ export async function pushToContentful(
         await mgmt.upsertEntry(themeTypeId, theme.id, {
           name: ContentfulManagement.locale(theme.name),
           path: ContentfulManagement.locale(theme.path),
-          color: ContentfulManagement.locale(theme.color),
         })
         result.themesSynced++
       } catch (err) {
@@ -624,7 +686,29 @@ export async function pushToContentful(
     result.errors.push(`Themes fetch failed: ${err}`)
   }
 
-  // 2. Push events (only changed since last push, concurrent batches)
+  // 2. Push organizations (small set — always push all)
+  try {
+    const dbOrgs = await db.query.organizations.findMany()
+    for (const org of dbOrgs) {
+      try {
+        const fields: Record<string, Record<string, unknown>> = {
+          name: ContentfulManagement.locale(org.name),
+          acronym: ContentfulManagement.locale(org.acronym),
+          link: ContentfulManagement.locale(org.link),
+        }
+        // Logo is a Link (Asset) in Contentful — requires image upload via R2
+        // Skip during bulk push; logo must be set via the admin UI upload flow
+        await mgmt.upsertEntry(organizationTypeId, org.id, fields)
+        result.organizationsSynced++
+      } catch (err) {
+        result.errors.push(`Organization ${org.id}: ${err}`)
+      }
+    }
+  } catch (err) {
+    result.errors.push(`Organizations fetch failed: ${err}`)
+  }
+
+  // 3. Push events (only changed since last push, concurrent batches)
   try {
     const dbEvents = lastPushTs > 0
       ? await db.query.events.findMany()
@@ -645,17 +729,21 @@ export async function pushToContentful(
       }
 
       if (event.themeId) fields.theme = ContentfulManagement.entryRef(event.themeId)
-      if (event.org) fields.org = ContentfulManagement.locale(event.org)
+      if (event.organizationId) fields.organization = ContentfulManagement.entryRef(event.organizationId)
       if (event.venue) fields.venue = ContentfulManagement.locale(event.venue)
-      if (event.dateTime) fields.dateTime = ContentfulManagement.locale(event.dateTime)
+      if (event.dateTime) {
+        // Convert human-readable date to ISO 8601 for Contentful Date field
+        const parsed = new Date(event.dateTime)
+        fields.date = ContentfulManagement.locale(
+          Number.isNaN(parsed.getTime()) ? event.dateTime : parsed.toISOString(),
+        )
+      }
       if (event.price) fields.price = ContentfulManagement.locale(event.price)
-      if (event.backgroundColor) fields.backgroundColor = ContentfulManagement.locale(event.backgroundColor)
-      if (event.subtheme) fields.subtheme = ContentfulManagement.locale(event.subtheme)
+      if (event.classCode) fields.classCode = ContentfulManagement.locale(event.classCode)
+      if (event.startTime) fields.startTime = ContentfulManagement.locale(event.startTime)
+      if (event.endTime) fields.endTime = ContentfulManagement.locale(event.endTime)
       if (event.gformsUrl) fields.gformsUrl = ContentfulManagement.locale(event.gformsUrl)
-
-      if (event.startsAt) fields.startsAt = ContentfulManagement.locale(new Date(event.startsAt * 1000).toISOString())
-      if (event.endsAt) fields.endsAt = ContentfulManagement.locale(new Date(event.endsAt * 1000).toISOString())
-      if (event.registrationOpensAt) fields.registrationOpensAt = ContentfulManagement.locale(new Date(event.registrationOpensAt * 1000).toISOString())
+      if (event.gformsEditorUrl) fields.gformsEditorUrl = ContentfulManagement.locale(event.gformsEditorUrl)
       if (event.registrationClosesAt) fields.registrationClosesAt = ContentfulManagement.locale(new Date(event.registrationClosesAt * 1000).toISOString())
 
       await mgmt.upsertEntry(eventTypeId, event.id, fields)
@@ -691,7 +779,6 @@ export async function pushToContentful(
         answer: ContentfulManagement.locale(faq.answer),
         category: ContentfulManagement.locale(faq.category),
         sortOrder: ContentfulManagement.locale(faq.sortOrder),
-        isActive: ContentfulManagement.locale(faq.isActive),
       })
       result.faqsSynced++
     })
@@ -706,7 +793,7 @@ export async function pushToContentful(
   }
 
   console.log(
-    `[Push] Complete: ${result.themesSynced} themes, ${result.eventsSynced} events, ${result.faqsSynced} FAQs pushed to Contentful, ${result.errors.length} errors`,
+    `[Push] Complete: ${result.themesSynced} themes, ${result.organizationsSynced} organizations, ${result.eventsSynced} events, ${result.faqsSynced} FAQs pushed to Contentful, ${result.errors.length} errors`,
   )
 
   return result

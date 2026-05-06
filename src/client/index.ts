@@ -22,6 +22,7 @@ export type {
   BookmarkEntry,
   Faq,
   Theme,
+  Organization,
   SiteConfig,
   ToggleBookmarkResult,
   LeapifyErrorBody,
@@ -108,6 +109,7 @@ import type {
   BookmarkEntry,
   Faq,
   Theme,
+  Organization,
   SiteConfig,
   ToggleBookmarkResult,
   LeapifyErrorBody,
@@ -248,6 +250,22 @@ export function createLeapifyClient(baseUrl: string, getToken?: GetTokenFn) {
     },
 
     /**
+     * GET /api/events/admin — admin only.
+     * Returns all events regardless of status.
+     */
+    getAdminEvents(): Promise<LeapEvent[]> {
+      return get<LeapEvent[]>("/api/events/admin");
+    },
+
+    /**
+     * POST /api/events/admin/publish — admin only.
+     * Batch publish queued events immediately or schedule them for later.
+     */
+    batchPublish(ids: string[], releaseAt?: number): Promise<{ updated: number }> {
+      return post("/api/events/admin/publish", { ids, releaseAt });
+    },
+
+    /**
      * GET /api/events/:slug
      * Returns a single published event by slug.
      */
@@ -278,6 +296,14 @@ export function createLeapifyClient(baseUrl: string, getToken?: GetTokenFn) {
      */
     updateEvent(slug: string, data: Partial<CreateEventBody>): Promise<LeapEvent> {
       return patch<LeapEvent>(`/api/events/${encodeURIComponent(slug)}`, data);
+    },
+
+    /**
+     * DELETE /api/events/:slug — admin only.
+     * Deletes an event.
+     */
+    deleteEvent(slug: string): Promise<void> {
+      return del<void>(`/api/events/${encodeURIComponent(slug)}`);
     },
 
     // ── Themes ─────────────────────────────────────────────────────────────
@@ -311,6 +337,37 @@ export function createLeapifyClient(baseUrl: string, getToken?: GetTokenFn) {
       return del<void>(`/api/themes/${encodeURIComponent(id)}`);
     },
 
+    // ── Organizations ──────────────────────────────────────────────────────
+
+    /**
+     * GET /api/organizations
+     * Returns all organizations.
+     */
+    getOrganizations(): Promise<Organization[]> {
+      return get<Organization[]>("/api/organizations");
+    },
+
+    /**
+     * POST /api/organizations — admin only.
+     */
+    createOrganization(data: Omit<Organization, "id" | "createdAt">): Promise<Organization> {
+      return post<Organization>("/api/organizations", data);
+    },
+
+    /**
+     * PATCH /api/organizations/:id — admin only.
+     */
+    updateOrganization(id: string, data: Partial<Omit<Organization, "id" | "createdAt">>): Promise<Organization> {
+      return patch<Organization>(`/api/organizations/${encodeURIComponent(id)}`, data);
+    },
+
+    /**
+     * DELETE /api/organizations/:id — admin only.
+     */
+    deleteOrganization(id: string): Promise<void> {
+      return del<void>(`/api/organizations/${encodeURIComponent(id)}`);
+    },
+
     // ── Users ──────────────────────────────────────────────────────────────
 
     /**
@@ -320,6 +377,32 @@ export function createLeapifyClient(baseUrl: string, getToken?: GetTokenFn) {
      */
     getMe(): Promise<UserProfile | null> {
       return get<UserProfile | null>("/api/users/me");
+    },
+
+    // ── Admin: User Management ────────────────────────────────────────────
+
+    /**
+     * GET /api/users — admin only.
+     * Returns all registered users.
+     */
+    getUsers(): Promise<UserProfile[]> {
+      return get<UserProfile[]>("/api/users");
+    },
+
+    /**
+     * PATCH /api/users/:id/role — admin only.
+     * Changes a user's role.
+     */
+    updateUserRole(id: string, role: string): Promise<UserProfile> {
+      return patch<UserProfile>(`/api/users/${encodeURIComponent(id)}/role`, { role });
+    },
+
+    /**
+     * POST /api/users/by-email — admin only.
+     * Finds or creates a user by email and sets their role.
+     */
+    upsertUserByEmail(email: string, role: string): Promise<UserProfile> {
+      return post<UserProfile>("/api/users/by-email", { email, role });
     },
 
     // ── Bookmarks ──────────────────────────────────────────────────────────

@@ -14,7 +14,18 @@ export interface Theme {
   id: string;
   name: string;
   path: string;
-  color: string | null;
+  createdAt: number;
+}
+
+/**
+ * An organization that hosts events.
+ */
+export interface Organization {
+  id: string;
+  name: string;
+  acronym: string;
+  logoUrl: string | null;
+  link: string | null;
   createdAt: number;
 }
 
@@ -33,23 +44,30 @@ export interface LeapEvent {
     id: string;
     name: string;
     path: string;
-    color: string | null;
+  } | null;
+  organizationId: string | null;
+  organization: {
+    id: string;
+    name: string;
+    acronym: string;
+    logoUrl: string | null;
+    link: string | null;
   } | null;
   title: string;
-  org: string | null;
+  description: string | null;
   venue: string | null;
   dateTime: string | null;
-  startsAt: number | null;
-  endsAt: number | null;
   price: string | null;
-  backgroundColor: string | null;
   backgroundImageUrl: string | null;
-  subtheme: string | null;
+  classCode: string | null;
+  startTime: string | null;
+  endTime: string | null;
   isMajor: boolean;
   maxSlots: number;
   registeredSlots: number;
   gformsUrl: string | null;
-  registrationOpensAt: number | null;
+  gformsEditorUrl: string | null;
+  releaseAt: number | null;
   registrationClosesAt: number | null;
   publishedAt: number | null;
   // Present only on GET /events/:slug
@@ -78,6 +96,7 @@ export interface UserProfile {
   email: string;
   name: string;
   role: UserRole;
+  image: string | null;
   createdAt: number;
 }
 
@@ -99,7 +118,6 @@ export interface Faq {
   answer: string;
   category: string | null;
   sortOrder: number;
-  isActive: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -144,22 +162,22 @@ export interface LeapifyErrorBody {
  */
 export interface CreateEventBody {
   themeId: string;
+  organizationId?: string;
   title: string;
-  org?: string;
+  description?: string;
   venue?: string;
   dateTime?: string;
-  startsAt?: number;
-  endsAt?: number;
   price?: string;
-  backgroundColor?: string;
   backgroundImageUrl?: string;
-  subtheme?: string;
+  classCode?: string;
+  startTime?: string;
+  endTime?: string;
   isMajor?: boolean;
   maxSlots?: number;
   gformsId?: string;
   gformsUrl?: string;
+  gformsEditorUrl?: string;
   releaseAt?: number;
-  registrationOpensAt?: number;
   registrationClosesAt?: number;
   contentfulEntryId?: string;
   status?: "draft" | "queued" | "published";
@@ -182,6 +200,7 @@ export interface SnapshotResult {
   themesSynced: number;
   eventsSynced: number;
   faqsSynced: number;
+  organizationsSynced: number;
   imagesUploaded: number;
   imagesSkipped: number;
   errors: string[];

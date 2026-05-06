@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, sql } from 'drizzle-orm'
 import type { LeapifyEnv } from '../types'
 import { createDb } from '../db'
 import { events } from '../db/schema/events'
@@ -43,21 +43,31 @@ async function pushEventToContentful(env: LeapifyEnv['Bindings'], event: typeof 
       maxSlots: ContentfulManagement.locale(event.maxSlots),
     }
     if (event.themeId) fields.theme = ContentfulManagement.entryRef(event.themeId)
-    if (event.org) fields.org = ContentfulManagement.locale(event.org)
+    if (event.organizationId) fields.organization = ContentfulManagement.entryRef(event.organizationId)
     if (event.venue) fields.venue = ContentfulManagement.locale(event.venue)
-    if (event.dateTime) fields.dateTime = ContentfulManagement.locale(event.dateTime)
+    if (event.dateTime) {
+      // Convert human-readable date to ISO 8601 for Contentful Date field
+      const parsed = new Date(event.dateTime)
+      fields.date = ContentfulManagement.locale(
+        Number.isNaN(parsed.getTime()) ? event.dateTime : parsed.toISOString(),
+      )
+    }
     if (event.price) fields.price = ContentfulManagement.locale(event.price)
-    if (event.backgroundColor) fields.backgroundColor = ContentfulManagement.locale(event.backgroundColor)
+    if (event.classCode) fields.classCode = ContentfulManagement.locale(event.classCode)
+    if (event.startTime) fields.startTime = ContentfulManagement.locale(event.startTime)
+    if (event.endTime) fields.endTime = ContentfulManagement.locale(event.endTime)
     if (event.gformsUrl) fields.gformsUrl = ContentfulManagement.locale(event.gformsUrl)
-    if (event.startsAt) fields.startsAt = ContentfulManagement.locale(new Date(event.startsAt * 1000).toISOString())
-    if (event.endsAt) fields.endsAt = ContentfulManagement.locale(new Date(event.endsAt * 1000).toISOString())
-    if (event.registrationOpensAt) fields.registrationOpensAt = ContentfulManagement.locale(new Date(event.registrationOpensAt * 1000).toISOString())
-    if (event.registrationClosesAt) fields.registrationClosesAt = ContentfulManagement.locale(new Date(event.registrationClosesAt * 1000).toISOString())
-
+    if (event.gformsEditorUrl) fields.gformsEditorUrl = ContentfulManagement.locale(event.gformsEditorUrl)
+    if (event.registrationClosesAt) {
+      fields.registrationClosesAt = ContentfulManagement.locale(
+        new Date(event.registrationClosesAt * 1000).toISOString(),
+      )
+    }
     // Upload background image to Contentful as an asset
     if (event.backgroundImageUrl && env.FILES) {
       try {
-        const imageKey = event.backgroundImageUrl.replace('/uploads/images/', '')
+        const imageKey = new URL(event.backgroundImageUrl).pathname.replace(/^\/api\/uploads\/images\//, '')
+        console.log(`[Contentful] Attempting image sync for event ${event.id}, key: ${imageKey}`)
         const object = await env.FILES.get(imageKey)
         if (object) {
           const data = await object.arrayBuffer()
@@ -66,10 +76,15 @@ async function pushEventToContentful(env: LeapifyEnv['Bindings'], event: typeof 
           const uploadId = await mgmt.uploadFile(fileName, data, contentType)
           const asset = await mgmt.createAssetFromUpload(uploadId, event.title, fileName, contentType)
           fields.image = ContentfulManagement.assetRef(asset.id)
+          console.log(`[Contentful] Image synced for event ${event.id}, asset: ${asset.id}`)
+        } else {
+          console.warn(`[Contentful] Image not found in R2 for event ${event.id}, key: ${imageKey}`)
         }
       } catch (err) {
         console.warn(`[Contentful] Failed to upload image for event ${event.id}:`, err)
       }
+    } else if (event.backgroundImageUrl && !env.FILES) {
+      console.warn(`[Contentful] FILES binding not available, skipping image sync for event ${event.id}`)
     }
 
     await mgmt.upsertEntry(CF_EVENT_CT, event.id, fields)
@@ -80,23 +95,23 @@ async function pushEventToContentful(env: LeapifyEnv['Bindings'], event: typeof 
 
 const createEventSchema = z.object({
   themeId: z.string().min(1),
+  organizationId: z.string().optional(),
   title: z.string().min(1),
-  org: z.string().optional(),
+  description: z.string().optional(),
   venue: z.string().optional(),
   dateTime: z.string().optional(),
-  startsAt: z.number().optional(),
-  endsAt: z.number().optional(),
   price: z.string().optional(),
-  backgroundColor: z.string().optional(),
   backgroundImageUrl: z.string().url().optional(),
-  subtheme: z.string().optional(),
+  classCode: z.string().optional(),
+  startTime: z.string().optional(),
+  endTime: z.string().optional(),
+  registrationClosesAt: z.number().optional(),
   isMajor: z.boolean().default(false),
   maxSlots: z.number().int().min(0).default(0),
   gformsId: z.string().optional(),
   gformsUrl: z.string().url().optional(),
+  gformsEditorUrl: z.string().url().optional(),
   releaseAt: z.number().optional(),
-  registrationOpensAt: z.number().optional(),
-  registrationClosesAt: z.number().optional(),
   contentfulEntryId: z.string().optional(),
   status: z.enum(['draft', 'queued', 'published']).default('draft'),
 })
@@ -111,6 +126,58 @@ function generateSlug(title: string): string {
     .replace(/[\s_-]+/g, '-')
     .replace(/^-+|-+$/g, '')
 }
+
+// GET /events/admin — admin only, returns all events regardless of status
+eventsRoute.get('/admin', authMiddleware, adminMiddleware, async (c) => {
+  const db = createDb(c.env.DB)
+  const data = await db.query.events.findMany({
+    with: { theme: true, organization: true },
+    orderBy: (e, { desc }) => [desc(e.createdAt)],
+  })
+  return c.json({ data })
+})
+
+// POST /events/admin/publish — admin only, batch publish queued events
+eventsRoute.post('/admin/publish', authMiddleware, adminMiddleware, async (c) => {
+  const body = await c.req.json<{ ids: string[]; releaseAt?: number }>()
+  const db = createDb(c.env.DB)
+  const cache = new CacheService(c.env.KV)
+
+  if (!body.ids?.length) {
+    return c.json({ error: 'ids are required' }, 400)
+  }
+
+  if (body.releaseAt) {
+    // Schedule for later
+    await db
+      .update(events)
+      .set({ releaseAt: body.releaseAt, status: 'queued' })
+      .where(
+        sql`${events.id} IN (${sql.join(
+          body.ids.map((id) => sql`${id}`),
+          sql`, `,
+        )})`,
+      )
+  } else {
+    // Publish now
+    await db
+      .update(events)
+      .set({ status: 'published', publishedAt: sql`(unixepoch())` })
+      .where(
+        sql`${events.id} IN (${sql.join(
+          body.ids.map((id) => sql`${id}`),
+          sql`, `,
+        )})`,
+      )
+  }
+
+  await Promise.all([
+    cache.del(EVENTS_LIST_KV_KEY),
+    cache.del(EVENTS_ETAG_KV_KEY),
+  ])
+
+  return c.json({ data: { updated: body.ids.length } })
+})
 
 // GET /events — public, ETag + 7-day browser cache
 eventsRoute.get('/', eventsListRateLimit, async (c) => {
@@ -143,27 +210,27 @@ eventsRoute.get('/', eventsListRateLimit, async (c) => {
         where: eq(events.status, 'published'),
         with: {
           theme: true,
+          organization: true,
         },
         columns: {
           id: true,
           slug: true,
           themeId: true,
+          organizationId: true,
           title: true,
-          org: true,
           venue: true,
           dateTime: true,
-          startsAt: true,
-          endsAt: true,
           price: true,
-          backgroundColor: true,
           backgroundImageUrl: true,
-          subtheme: true,
+          classCode: true,
+          startTime: true,
+          endTime: true,
+          registrationClosesAt: true,
           isMajor: true,
           maxSlots: true,
           registeredSlots: true,
           gformsUrl: true,
-          registrationOpensAt: true,
-          registrationClosesAt: true,
+          gformsEditorUrl: true,
           publishedAt: true,
         },
       }),
@@ -295,4 +362,22 @@ eventsRoute.patch('/:slug', authMiddleware, adminMiddleware, async (c) => {
   c.executionCtx.waitUntil(pushEventToContentful(c.env, updated))
 
   return c.json({ data: updated })
+})
+
+// DELETE /events/:slug — admin only
+eventsRoute.delete('/:slug', authMiddleware, adminMiddleware, async (c) => {
+  const { slug } = c.req.param()
+  const db = createDb(c.env.DB)
+  const cache = new CacheService(c.env.KV)
+
+  const [deleted] = await db.delete(events).where(eq(events.slug, slug)).returning()
+
+  if (!deleted) throw notFound('Event')
+
+  await Promise.all([
+    cache.del(EVENTS_LIST_KV_KEY),
+    cache.del(EVENTS_ETAG_KV_KEY),
+  ])
+
+  return c.body(null, 204)
 })

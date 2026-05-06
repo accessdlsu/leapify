@@ -1,11 +1,21 @@
-import { and, eq, lte } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { LeapifyBindings } from "../types";
 import { createDb } from "../db";
 import { events } from "../db/schema/events";
 
-const SECONDS_IN_24H = 86400;
-const SECONDS_IN_1H = 3600;
-const WINDOW = 3600; // check events starting within the next hour boundary
+/**
+ * Parse a human-readable dateTime (e.g. "May 7, 2026") and optional startTime
+ * (e.g. "14:30") into a Unix timestamp (seconds). Returns null if unparseable.
+ */
+function parseStartTimestamp(
+  dateTime: string | null,
+  startTime: string | null,
+): number | null {
+  if (!dateTime) return null;
+  const combined = startTime ? `${dateTime} ${startTime}` : dateTime;
+  const ms = Date.parse(combined);
+  return Number.isNaN(ms) ? null : Math.floor(ms / 1000);
+}
 
 /**
  * Cron: every hour (`0 * * * *`)
@@ -21,9 +31,12 @@ export async function reminderEmails(env: LeapifyBindings): Promise<void> {
     return;
   }
 
-  const hasSes = !!(env.SES_REGION && env.SES_ACCESS_KEY_ID && env.SES_SECRET_ACCESS_KEY);
+  const hasSes = !!(
+    env.SES_REGION &&
+    env.SES_ACCESS_KEY_ID &&
+    env.SES_SECRET_ACCESS_KEY
+  );
   const hasResend = !!env.RESEND_API_KEY;
-
   if (!hasSes && !hasResend) {
     console.warn(
       "[reminder-emails] No email providers configured. Skipping reminders.",
@@ -34,19 +47,25 @@ export async function reminderEmails(env: LeapifyBindings): Promise<void> {
   const db = createDb(env.DB);
   const now = Math.floor(Date.now() / 1000);
 
-  // 24-hour reminders
-  const events24h = await db.query.events.findMany({
+  // Fetch published events that haven't had 24h reminders sent
+  // We filter in-memory since startsAt is derived from dateTime + startTime
+  const candidates24h = await db.query.events.findMany({
     where: and(
       eq(events.status, "published"),
       eq(events.reminder24hSent, false),
-      lte(events.startsAt, now + SECONDS_IN_24H + WINDOW),
     ),
-    columns: { id: true, slug: true, startsAt: true },
+    columns: {
+      id: true,
+      dateTime: true,
+      startTime: true,
+    },
   });
 
-  for (const event of events24h) {
-    if (!event.startsAt) continue;
-    const hoursUntil = (event.startsAt - now) / 3600;
+  for (const event of candidates24h) {
+    const startsAt = parseStartTimestamp(event.dateTime, event.startTime);
+    if (!startsAt) continue;
+
+    const hoursUntil = (startsAt - now) / 3600;
     if (hoursUntil <= 25 && hoursUntil >= 23) {
       await env.EMAIL_QUEUE.send({
         type: "send_reminder_email",
@@ -55,28 +74,29 @@ export async function reminderEmails(env: LeapifyBindings): Promise<void> {
     }
   }
 
-  // 1-hour reminders
-  const events1h = await db.query.events.findMany({
+  // Fetch published events that haven't had 1h reminders sent
+  const candidates1h = await db.query.events.findMany({
     where: and(
       eq(events.status, "published"),
       eq(events.reminder1hSent, false),
-      lte(events.startsAt, now + SECONDS_IN_1H + WINDOW),
     ),
-    columns: { id: true, slug: true, startsAt: true },
+    columns: {
+      id: true,
+      dateTime: true,
+      startTime: true,
+    },
   });
 
-  for (const event of events1h) {
-    if (!event.startsAt) continue;
-    const minutesUntil = (event.startsAt - now) / 60;
-    if (minutesUntil <= 65 && minutesUntil >= 55) {
+  for (const event of candidates1h) {
+    const startsAt = parseStartTimestamp(event.dateTime, event.startTime);
+    if (!startsAt) continue;
+
+    const hoursUntil = (startsAt - now) / 3600;
+    if (hoursUntil <= 1.5 && hoursUntil >= 0) {
       await env.EMAIL_QUEUE.send({
         type: "send_reminder_email",
         payload: { eventId: event.id, hoursBeforeEvent: 1 },
       });
     }
   }
-
-  console.log(
-    `[reminder-emails] Queued ${events24h.length} 24h reminders, ${events1h.length} 1h reminders.`,
-  );
 }

@@ -3,12 +3,9 @@ import type { LeapifyBindings } from '../types'
 import type { LeapifyJob } from './jobs'
 import { createDb } from '../db'
 import { events } from '../db/schema/events'
-import { siteConfig } from '../db/schema/site-config'
 import { createEmailRouter, type EmailRouter } from '../services/email'
 import { buildReminderEmail } from '../services/resend'
 import { GFormsService } from '../services/gforms'
-import { ContentfulManagement } from '../services/contentful-management'
-import { ensureContentTypes, pushToContentful } from '../services/snapshot'
 
 /**
  * CF Queue consumer handler.
@@ -46,21 +43,22 @@ async function processJob(
     env: LeapifyBindings
   },
 ): Promise<void> {
-  const { db, email, gforms, env } = services
+  const { db, email, gforms } = services
 
   switch (job.type) {
     case 'send_email': {
-      if (!email) throw new Error('Email provider not configured (SES credentials missing)')
+      if (!email) throw new Error('Email provider not configured')
       const result = await email.sendEmail(job.payload)
       console.log(`[Queue] send_email dispatched via ${result.provider} (id=${result.id})`)
       break
     }
 
     case 'send_reminder_email': {
-      if (!email) throw new Error('Email provider not configured (SES credentials missing)')
+      if (!email) throw new Error('Email provider not configured')
 
       const event = await db.query.events.findFirst({
         where: eq(events.id, job.payload.eventId),
+        with: { organization: true },
       })
       if (!event?.gformsId) break
 
@@ -70,89 +68,61 @@ async function processJob(
       const isDay = job.payload.hoursBeforeEvent === 24
       const subject = isDay
         ? `Reminder: "${event.title}" is tomorrow!`
-        : `Reminder: "${event.title}" starts in 1 hour!`
+        : `Reminder: "${event.title}" is in 1 hour!`
+      const html = buildReminderEmail({
+        title: event.title,
+        organization: event.organization?.name ?? null,
+        dateTime: event.dateTime,
+        startTime: event.startTime,
+        venue: event.venue,
+        gformsUrl: event.gformsUrl,
+      })
 
-      const html = buildReminderEmail(event)
-
-      // Send in batches of 100; per-message fallback applies inside sendEmail()
-      const BATCH_SIZE = 100
+      const BATCH_SIZE = 50
+      const chunks: string[][] = []
       for (let i = 0; i < emails.length; i += BATCH_SIZE) {
-        const chunk = emails.slice(i, i + BATCH_SIZE).map((to) => ({ to, subject, html }))
-        const results = await email.sendBatch(chunk)
-
-        const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
-        if (failures.length > 0) {
+        chunks.push(emails.slice(i, i + BATCH_SIZE))
+      }
+      const failures: string[] = []
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i]
+        try {
+          await email.sendEmail({ to: chunk, subject, html })
+        } catch (err) {
+          failures.push(...chunk)
           console.error(
             `[Queue] send_reminder_email: ${failures.length}/${chunk.length} messages failed in batch ${i / BATCH_SIZE + 1}`,
-            failures.map((f) => f.reason),
+            err,
           )
         }
       }
 
-      // Mark reminder as sent
-      if (isDay) {
-        await db
-          .update(events)
-          .set({ reminder24hSent: true })
-          .where(eq(events.id, job.payload.eventId))
-      } else {
-        await db
-          .update(events)
-          .set({ reminder1hSent: true })
-          .where(eq(events.id, job.payload.eventId))
-      }
+      const field = isDay ? 'reminder24hSent' : 'reminder1hSent'
+      await db.update(events).set({ [field]: true }).where(eq(events.id, event.id))
       break
     }
 
     case 'audit_log': {
-      console.log('[Audit]', job.payload.action, job.payload.userId, job.payload.meta)
-      break
-    }
-
-    case 'notify_batch_release': {
-      console.log('[Release] Events published:', job.payload.eventIds.join(', '))
-      break
-    }
-
-    case 'renew_forms_watch': {
-      const renewed = await gforms.renewWatch(job.payload.formId, job.payload.watchId)
-      const newExpiry = Math.floor(new Date(renewed.expireTime).getTime() / 1000)
-      await db
-        .update(events)
-        .set({ watchExpiresAt: newExpiry })
-        .where(eq(events.gformsId, job.payload.formId))
+      console.log(`[Queue] audit_log: ${job.payload.action} by ${job.payload.userId}`)
       break
     }
 
     case 'snapshot_content': {
-      console.log('[Snapshot] Content snapshot triggered at', job.payload.triggeredAt)
+      console.log(`[Queue] snapshot_content triggered at ${job.payload.triggeredAt}`)
+      break
+    }
 
-      if (!ContentfulManagement.isConfigured(env.CONTENTFUL_SPACE_ID, env.CONTENTFUL_MANAGEMENT_TOKEN)) {
-        console.warn('[Snapshot] Contentful Management API credentials not configured — skipping')
-        break
-      }
+    case 'notify_batch_release': {
+      console.log(`[Queue] notify_batch_release: ${job.payload.eventIds.length} events released`)
+      break
+    }
 
-      const mgmt = new ContentfulManagement(
-        env.CONTENTFUL_SPACE_ID!,
-        env.CONTENTFUL_MANAGEMENT_TOKEN!,
-        env.CONTENTFUL_ENVIRONMENT,
-      )
-
-      // Auto-generate content types, then push D1 → Contentful
-      await ensureContentTypes(mgmt, {})
-      const result = await pushToContentful(db, mgmt, {}, env.KV)
-      console.log('[Snapshot] Result:', JSON.stringify(result))
-
-      // Mark snapshot as completed only on success
-      if (result.errors.length === 0) {
-        const now = Math.floor(Date.now() / 1000)
-        await db
-          .update(siteConfig)
-          .set({ value: 'true', updatedAt: now })
-          .where(eq(siteConfig.key, 'snapshot_completed'))
-        console.log('[Snapshot] Marked snapshot_completed = true')
-      } else {
-        console.warn(`[Snapshot] ${result.errors.length} errors — will retry next hour`)
+    case 'renew_forms_watch': {
+      try {
+        await gforms.renewWatch(job.payload.formId, job.payload.watchId)
+        console.log(`[Queue] renew_forms_watch: renewed watch for form ${job.payload.formId}`)
+      } catch (err) {
+        console.error(`[Queue] renew_forms_watch failed for form ${job.payload.formId}:`, err)
       }
       break
     }

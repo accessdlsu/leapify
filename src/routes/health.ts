@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import type { LeapifyEnv } from '../types'
+import { authMiddleware, adminMiddleware } from '../auth/middleware'
 
 export const healthRoute = new Hono<LeapifyEnv>()
 
@@ -258,7 +259,7 @@ healthRoute.get('/', async (c) => {
  * POST /health/queue-burst
  * Internal load testing endpoint that blasts 100 mock items into the queue.
  */
-healthRoute.post('/queue-burst', async (c) => {
+healthRoute.post('/queue-burst', authMiddleware, adminMiddleware, async (c) => {
   if (!c.env.EMAIL_QUEUE) {
     return c.json({ error: 'Queue binding missing' }, 400)
   }

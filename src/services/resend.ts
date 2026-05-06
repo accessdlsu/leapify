@@ -81,16 +81,18 @@ export class ResendService {
 
 export function buildReminderEmail(event: {
   title: string;
+  organization?: string | null;
   dateTime?: string | null;
+  startTime?: string | null;
   venue?: string | null;
   gformsUrl?: string | null;
-  org?: string | null;
 }): string {
+  const timeDisplay = [event.dateTime, event.startTime].filter(Boolean).join(" at ");
   return `
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
       <h2 style="color: #1a1a2e;">📅 Reminder: ${event.title}</h2>
-      ${event.org ? `<p style="color: #666;">Organized by: <strong>${event.org}</strong></p>` : ""}
-      ${event.dateTime ? `<p>🕐 <strong>${event.dateTime}</strong></p>` : ""}
+      ${event.organization ? `<p style="color: #666;">Organized by: <strong>${event.organization}</strong></p>` : ""}
+      ${timeDisplay ? `<p>🕐 <strong>${timeDisplay}</strong></p>` : ""}
       ${event.venue ? `<p>📍 <strong>${event.venue}</strong></p>` : ""}
       <hr style="margin: 24px 0; border: none; border-top: 1px solid #eee;" />
       ${

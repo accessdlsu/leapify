@@ -9,7 +9,6 @@ export const faqs = sqliteTable('faqs', {
   answer: text('answer').notNull(),      // markdown supported
   category: text('category'),            // optional grouping, e.g. "Registration"
   sortOrder: integer('sort_order').notNull().default(0),
-  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
   createdAt: integer('created_at')
     .notNull()
     .default(sql`(unixepoch())`),

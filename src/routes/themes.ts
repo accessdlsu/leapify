@@ -28,7 +28,6 @@ async function pushThemeToContentful(env: LeapifyEnv['Bindings'], theme: typeof 
     await mgmt.upsertEntry(CF_THEME_CT, theme.id, {
       name: ContentfulManagement.locale(theme.name),
       path: ContentfulManagement.locale(theme.path),
-      color: ContentfulManagement.locale(theme.color),
     })
   } catch (err) {
     console.warn(`[Contentful] Failed to sync theme ${theme.id}:`, err)
@@ -50,17 +49,8 @@ async function deleteThemeFromContentful(env: LeapifyEnv['Bindings'], themeId: s
   try {
     const entry = await mgmt.getEntry(themeId)
     if (entry) {
-      // Unpublish then delete
-      const url = `https://api.contentful.com/spaces/${env.CONTENTFUL_SPACE_ID}/environments/${env.CONTENTFUL_ENVIRONMENT || 'master'}/entries/${themeId}/published`
-      await fetch(url, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${env.CONTENTFUL_MANAGEMENT_TOKEN}`, 'X-Contentful-Version': String(entry.sys.version ?? 1) },
-      })
-      const deleteUrl = `https://api.contentful.com/spaces/${env.CONTENTFUL_SPACE_ID}/environments/${env.CONTENTFUL_ENVIRONMENT || 'master'}/entries/${themeId}`
-      await fetch(deleteUrl, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${env.CONTENTFUL_MANAGEMENT_TOKEN}`, 'X-Contentful-Version': String((entry.sys.version ?? 1) + 1) },
-      })
+      await mgmt.unpublishEntry(themeId)
+      await mgmt.deleteEntry(themeId)
     }
   } catch (err) {
     console.warn(`[Contentful] Failed to delete theme ${themeId} from Contentful:`, err)
@@ -70,7 +60,6 @@ async function deleteThemeFromContentful(env: LeapifyEnv['Bindings'], themeId: s
 const createThemeSchema = z.object({
   name: z.string().min(1),
   path: z.string().min(1),
-  color: z.string().nullable().optional(),
 })
 
 export const themesRoute = new Hono<LeapifyEnv>()

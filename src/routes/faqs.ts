@@ -47,7 +47,6 @@ async function pushFaqToContentful(env: LeapifyEnv['Bindings'], faq: typeof faqs
       answer: { 'en-US': faq.answer },
       category: { 'en-US': faq.category },
       sortOrder: { 'en-US': faq.sortOrder },
-      isActive: { 'en-US': faq.isActive },
     })
     console.log(`[Contentful] Synced FAQ ${faq.id} successfully`)
   } catch (err) {
@@ -64,7 +63,6 @@ faqsRoute.get('/', async (c) => {
     FAQS_KV_KEY,
     () =>
       db.query.faqs.findMany({
-        where: eq(faqs.isActive, true),
         orderBy: (t, { asc }) => [asc(t.sortOrder), asc(t.createdAt)],
       }),
     FAQS_TTL,
@@ -117,24 +115,16 @@ faqsRoute.patch('/:id', authMiddleware, adminMiddleware, async (c) => {
   return c.json({ data: updated })
 })
 
-// DELETE /faqs/:id — admin, soft delete
+// DELETE /faqs/:id — admin, hard delete
 faqsRoute.delete('/:id', authMiddleware, adminMiddleware, async (c) => {
   const { id } = c.req.param()
   const db = createDb(c.env.DB)
   const cache = new CacheService(c.env.KV)
-  const now = Math.floor(Date.now() / 1000)
 
-  const [deleted] = await db
-    .update(faqs)
-    .set({ isActive: false, updatedAt: now })
-    .where(eq(faqs.id, id))
-    .returning()
+  const [deleted] = await db.delete(faqs).where(eq(faqs.id, id)).returning()
 
   if (!deleted) throw notFound('FAQ')
   await cache.del(FAQS_KV_KEY)
-
-  // Push to Contentful in background (non-blocking, keeps execution context alive)
-  c.executionCtx.waitUntil(pushFaqToContentful(c.env, deleted))
 
   return c.json({ data: { deleted: true } })
 })

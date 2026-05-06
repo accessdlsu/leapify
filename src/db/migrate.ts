@@ -19,6 +19,11 @@
 
 const PATCH_STATEMENTS = [
   `ALTER TABLE "themes" ADD COLUMN "updated_at" integer NOT NULL DEFAULT (unixepoch())`,
+  `ALTER TABLE "events" ADD COLUMN "organization_id" text`,
+  `ALTER TABLE "events" ADD COLUMN "class_code" text`,
+  `ALTER TABLE "events" ADD COLUMN "start_time" text`,
+  `ALTER TABLE "events" ADD COLUMN "end_time" text`,
+  `CREATE INDEX IF NOT EXISTS "idx_events_organization_id" ON "events" ("organization_id")`,
 ];
 
 // ─── Full schema for fresh databases ────────────────────────────────────────
@@ -93,12 +98,23 @@ const CREATE_STATEMENTS = [
   `CREATE UNIQUE INDEX IF NOT EXISTS "users_better_auth_id_unique" ON "users" ("better_auth_id")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "users_email_unique" ON "users" ("email")`,
 
+  // App: organizations (before events, due to FK)
+  `CREATE TABLE IF NOT EXISTS "organizations" (
+    "id" text PRIMARY KEY NOT NULL,
+    "name" text NOT NULL,
+    "acronym" text NOT NULL,
+    "logo_url" text,
+    "link" text,
+    "created_at" integer DEFAULT (unixepoch()) NOT NULL
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "organizations_name_unique" ON "organizations" ("name")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "organizations_acronym_unique" ON "organizations" ("acronym")`,
+
   // App: themes (before events, due to FK)
   `CREATE TABLE IF NOT EXISTS "themes" (
     "id" text PRIMARY KEY NOT NULL,
     "name" text NOT NULL,
     "path" text NOT NULL,
-    "color" text,
     "created_at" integer NOT NULL,
     "updated_at" integer NOT NULL DEFAULT (unixepoch())
   )`,
@@ -110,37 +126,39 @@ const CREATE_STATEMENTS = [
     "id" text PRIMARY KEY NOT NULL,
     "slug" text NOT NULL,
     "theme_id" text,
+    "organization_id" text,
     "title" text NOT NULL,
-    "org" text,
+    "description" text,
     "venue" text,
     "date_time" text,
-    "starts_at" integer,
-    "ends_at" integer,
     "price" text,
-    "background_color" text,
     "background_image_url" text,
-    "subtheme" text,
+    "class_code" text,
+    "start_time" text,
+    "end_time" text,
     "is_major" integer DEFAULT false NOT NULL,
     "max_slots" integer DEFAULT 0 NOT NULL,
     "registered_slots" integer DEFAULT 0 NOT NULL,
     "gforms_id" text,
     "gforms_url" text,
+    "gforms_editor_url" text,
+    "registration_closes_at" integer,
     "watch_id" text,
     "watch_expires_at" integer,
     "status" text DEFAULT 'draft' NOT NULL,
     "release_at" integer,
-    "registration_opens_at" integer,
-    "registration_closes_at" integer,
     "reminder_24h_sent" integer DEFAULT false NOT NULL,
     "reminder_1h_sent" integer DEFAULT false NOT NULL,
     "contentful_entry_id" text,
     "created_at" integer DEFAULT (unixepoch()) NOT NULL,
     "published_at" integer,
-    FOREIGN KEY ("theme_id") REFERENCES "themes"("id") ON UPDATE no action ON DELETE set null
+    FOREIGN KEY ("theme_id") REFERENCES "themes"("id") ON UPDATE no action ON DELETE set null,
+    FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON UPDATE no action ON DELETE set null
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "events_slug_unique" ON "events" ("slug")`,
   `CREATE INDEX IF NOT EXISTS "idx_events_status_release" ON "events" ("status", "release_at")`,
   `CREATE INDEX IF NOT EXISTS "idx_events_theme_id" ON "events" ("theme_id")`,
+  `CREATE INDEX IF NOT EXISTS "idx_events_organization_id" ON "events" ("organization_id")`,
   `CREATE INDEX IF NOT EXISTS "idx_events_slug" ON "events" ("slug")`,
 
   // App: faqs
@@ -150,7 +168,6 @@ const CREATE_STATEMENTS = [
     "answer" text NOT NULL,
     "category" text,
     "sort_order" integer DEFAULT 0 NOT NULL,
-    "is_active" integer DEFAULT true NOT NULL,
     "created_at" integer DEFAULT (unixepoch()) NOT NULL,
     "updated_at" integer DEFAULT (unixepoch()) NOT NULL
   )`,

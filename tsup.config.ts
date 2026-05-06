@@ -29,13 +29,13 @@ export default defineConfig([
     dts: false, // worker.ts is not a public API surface
     splitting: false,
     treeshake: true,
-    sourcemap: true,
+    sourcemap: false,
     target: 'es2022',
     external: ['hono', '@cloudflare/workers-types', '@opentelemetry/api'],
     outDir: 'dist',
     // Bundle everything into one file so wrangler can upload it without
     // needing a bundler step in the consumer's deploy pipeline.
-    noExternal: [/.*/],
+    noExternal: [/^(?!contentful-management$)/],
     // Keep the browser guard from src/index.ts from throwing in CF Workers.
     // CF Workers don't define `document` so the guard is fine — but we
     // explicitly mark it as no-side-effects-removal.

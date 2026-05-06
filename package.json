@@ -122,6 +122,7 @@
   "dependencies": {
     "@hono/zod-validator": "^0.7.6",
     "better-auth": "^1.6.9",
+    "contentful-management": "^12.3.2",
     "wrangler": "^4.80.0",
     "zod": "^4.3.6"
   },
