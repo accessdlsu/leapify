@@ -23,6 +23,7 @@ const PATCH_STATEMENTS = [
   `ALTER TABLE "events" ADD COLUMN "class_code" text`,
   `ALTER TABLE "events" ADD COLUMN "start_time" text`,
   `ALTER TABLE "events" ADD COLUMN "end_time" text`,
+  `ALTER TABLE "events" RENAME COLUMN "is_major" TO "is_spotlight"`,
   `CREATE INDEX IF NOT EXISTS "idx_events_organization_id" ON "events" ("organization_id")`,
 ];
 
@@ -136,7 +137,7 @@ const CREATE_STATEMENTS = [
     "class_code" text,
     "start_time" text,
     "end_time" text,
-    "is_major" integer DEFAULT false NOT NULL,
+    "is_spotlight" integer DEFAULT false NOT NULL,
     "max_slots" integer DEFAULT 0 NOT NULL,
     "registered_slots" integer DEFAULT 0 NOT NULL,
     "gforms_id" text,
@@ -216,8 +217,13 @@ export async function ensureDatabase(d1: D1Database): Promise<void> {
     try {
       await d1.prepare(sql).run();
     } catch (err: any) {
-      // Ignore "duplicate column" errors from ALTER TABLE
-      if (err?.message?.includes('duplicate column')) continue;
+      // Ignore "duplicate column" or "no such column" errors from ALTER TABLE
+      if (
+        err?.message?.includes("duplicate column") ||
+        err?.message?.includes("no such column: is_major")
+      ) {
+        continue;
+      }
       throw err;
     }
   }
