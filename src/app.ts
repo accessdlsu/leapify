@@ -75,7 +75,7 @@ export function createApp(options: LeapifyAppOptions = {}): Hono<LeapifyEnv> {
       return auth.handler(new Request(req.url, {
         method: req.method,
         headers: newHeaders,
-        body: req.method === 'GET' ? null : req.body,
+        body: (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') ? null : req.body,
         redirect: req.redirect,
       }))
     }

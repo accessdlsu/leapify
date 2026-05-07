@@ -200,7 +200,7 @@ classesRoute.get('/', eventsListRateLimit, async (c) => {
   // Handle conditional GET
   const ifNoneMatch = c.req.header('If-None-Match')
   if (ifNoneMatch === etag) {
-    return c.newResponse(null, 304)
+    return c.body(null, 304)
   }
 
   const data = await cache.getOrSet(

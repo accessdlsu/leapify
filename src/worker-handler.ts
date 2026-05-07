@@ -30,6 +30,7 @@ const API_PREFIXES = [
   "/api/auth/",
   "/api/classes",
   "/api/users",
+  "/api/organizations",
   "/api/faqs",
   "/api/themes",
   "/api/config",
@@ -134,7 +135,8 @@ export function createWorkerHandler(options: CreateWorkerHandlerOptions) {
 
       // SPA fallback: if no matching file and path has no extension,
       // serve index.html so the client-side router handles it.
-      if ((!response || response.status === 404) && !pathname.includes(".")) {
+      // Only do this for GET requests to avoid disturbing bodies of other methods.
+      if ((!response || response.status === 404) && !pathname.includes(".") && request.method === "GET") {
         const indexRequest = new Request(new URL("/", request.url), request);
         response = await options.serveFrontend(indexRequest, env, ctx);
       }
