@@ -49,7 +49,7 @@
     "clean": "node scripts/clean.mjs",
     "version:auto": "node scripts/auto-version.mjs",
     "pack": "npm run clean && npm run version:auto && npm run build && npm pack",
-    "pub": "npm run clean && npm run build && npm publish --access public"
+    "pub": "npm whoami && npm run clean && npm run build && npm publish --access public"
   },
   "cloudflare": {
     "bindings": {
