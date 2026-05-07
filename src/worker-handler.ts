@@ -28,12 +28,13 @@ import type { LeapifyJob } from "./queues/jobs";
 
 const API_PREFIXES = [
   "/api/auth/",
-  "/api/events",
+  "/api/classes",
   "/api/users",
   "/api/faqs",
   "/api/themes",
   "/api/config",
   "/api/uploads",
+  "/api/contentful",
   "/health",
   "/internal/",
   "/.well-known/",

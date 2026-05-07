@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import type { LeapifyBindings } from "../types";
 import { createDb } from "../db";
-import { events } from "../db/schema/events";
+import { events } from "../db/schema/classes";
 
 /**
  * Parse a human-readable dateTime (e.g. "May 7, 2026") and optional startTime

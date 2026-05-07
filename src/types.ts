@@ -5,6 +5,8 @@ import type {
   Queue
 } from '@cloudflare/workers-types'
 
+export type CmsMode = 'cloudflare' | 'contentful' | 'hybrid'
+
 /**
  * Cloudflare bindings expected in the Worker environment.
  * These map directly to wrangler.toml bindings + Worker Secrets.
@@ -51,6 +53,13 @@ export interface LeapifyBindings {
   INTERNAL_API_SECRET: string
   /** PoW challenge difficulty (leading zero bits). Default: 4. Range: 1-8. */
   POW_DIFFICULTY?: string
+  /**
+   * CMS integration mode. Controls how content is managed.
+   * - "cloudflare" — D1/R2 only, no Contentful
+   * - "contentful" — Contentful is source of truth, D1 is read cache
+   * - "hybrid" — Admin writes to D1, pushes to Contentful (default)
+   */
+  CMS_MODE?: string
 }
 
 /**
@@ -61,7 +70,27 @@ export interface LeapifyEnv {
   Variables: {
     user: import('./auth/types').LeapifyUser
     gformsWebhookUrl: string | undefined
+    cmsMode: CmsMode
   }
+}
+
+/**
+ * Parse the CMS_MODE env var into a typed value.
+ * Defaults to "hybrid" if not set.
+ */
+export function parseCmsMode(raw: string | undefined): CmsMode {
+  if (raw === 'cloudflare' || raw === 'contentful') return raw
+  return 'hybrid'
+}
+
+/** Check if Contentful push (D1 → Contentful) is enabled for the given mode. */
+export function shouldPushToContentful(mode: CmsMode): boolean {
+  return mode === 'hybrid'
+}
+
+/** Check if Contentful pull (Contentful → D1) is enabled for the given mode. */
+export function shouldPullFromContentful(mode: CmsMode): boolean {
+  return mode === 'contentful' || mode === 'hybrid'
 }
 
 /**
@@ -74,6 +103,7 @@ export interface SiteConfigMap {
   registration_globally_open: boolean
   maintenance_mode: boolean
   snapshot_completed: boolean
+  cms_mode: 'cloudflare' | 'contentful' | 'hybrid'
 }
 
 export type SiteConfigKey = keyof SiteConfigMap

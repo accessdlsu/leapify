@@ -62,7 +62,7 @@ export interface LeapEvent {
   classCode: string | null;
   startTime: string | null;
   endTime: string | null;
-  isMajor: boolean;
+  isSpotlight: boolean;
   maxSlots: number;
   registeredSlots: number;
   gformsUrl: string | null;
@@ -133,6 +133,7 @@ export interface SiteConfig {
   siteName: string | null;
   registrationGloballyOpen: boolean;
   maintenanceMode: boolean;
+  cmsMode: "cloudflare" | "contentful" | "hybrid";
   now: number;
 }
 
@@ -172,7 +173,7 @@ export interface CreateEventBody {
   classCode?: string;
   startTime?: string;
   endTime?: string;
-  isMajor?: boolean;
+  isSpotlight?: boolean;
   maxSlots?: number;
   gformsId?: string;
   gformsUrl?: string;
@@ -230,3 +231,5 @@ export interface RuntimeConfig {
   production: boolean;
   leapifyApiUrl: string;
 }
+
+export type CmsMode = "cloudflare" | "contentful" | "hybrid";

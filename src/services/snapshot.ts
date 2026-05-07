@@ -14,7 +14,7 @@ import { ContentfulService, type ContentfulEntry, type ContentfulAsset } from '.
 import { ContentfulManagement } from './contentful-management'
 import type { LeapifyDb } from '../db'
 import { themes } from '../db/schema/themes'
-import { events } from '../db/schema/events'
+import { events } from '../db/schema/classes'
 import { faqs } from '../db/schema/faqs'
 import { organizations } from '../db/schema/organizations'
 
@@ -37,7 +37,7 @@ export interface SnapshotConfig {
       endTime: string
       price: string
       image: string
-      isMajor: string
+      isSpotlight: string
       maxSlots: string
       gformsUrl: string
       gformsEditorUrl: string
@@ -91,7 +91,7 @@ const DEFAULT_FIELDS: SnapshotConfig['fields'] = {
     endTime: 'endTime',
     price: 'price',
     image: 'image',
-    isMajor: 'isMajor',
+    isSpotlight: 'isSpotlight',
     maxSlots: 'maxSlots',
     gformsUrl: 'gformsUrl',
     gformsEditorUrl: 'gformsEditorUrl',
@@ -411,8 +411,8 @@ async function syncEvents(
 
       if (backgroundImageUrl) values.backgroundImageUrl = backgroundImageUrl
 
-      const isMajor = ContentfulService.getField<boolean>(entry, f.isMajor)
-      if (isMajor !== undefined) values.isMajor = isMajor
+      const isSpotlight = ContentfulService.getField<boolean>(entry, f.isSpotlight)
+      if (isSpotlight !== undefined) values.isSpotlight = isSpotlight
 
       const maxSlots = ContentfulService.getField<number>(entry, f.maxSlots)
       if (maxSlots !== undefined) values.maxSlots = maxSlots
@@ -603,7 +603,7 @@ export async function ensureContentTypes(
     { id: 'endTime', name: 'End Time', type: 'Symbol' },
     { id: 'price', name: 'Price', type: 'Symbol' },
     { id: 'image', name: 'Image', type: 'Link', linkType: 'Asset' },
-    { id: 'isMajor', name: 'Major Event', type: 'Boolean' },
+    { id: 'isSpotlight', name: 'Spotlight', type: 'Boolean' },
     { id: 'maxSlots', name: 'Max Slots', type: 'Integer' },
     { id: 'gformsUrl', name: 'Google Forms URL', type: 'Symbol' },
     { id: 'gformsEditorUrl', name: 'Google Forms Editor URL', type: 'Symbol' },
@@ -724,7 +724,7 @@ export async function pushToContentful(
       const fields: Record<string, Record<string, unknown>> = {
         title: ContentfulManagement.locale(event.title),
         slug: ContentfulManagement.locale(event.slug),
-        isMajor: ContentfulManagement.locale(event.isMajor),
+        isSpotlight: ContentfulManagement.locale(event.isSpotlight),
         maxSlots: ContentfulManagement.locale(event.maxSlots),
       }
 

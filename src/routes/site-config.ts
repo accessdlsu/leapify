@@ -25,6 +25,9 @@ siteConfigRoute.get("/", async (c) => {
       siteName: config.site_name ?? null,
       registrationGloballyOpen: config.registration_globally_open ?? true,
       maintenanceMode: config.maintenance_mode ?? false,
+      // Prefer the D1-persisted value over the env-var default so that
+      // PATCH /config/cms_mode changes are reflected immediately.
+      cmsMode: config.cms_mode ?? c.get('cmsMode'),
       now: Math.floor(Date.now() / 1000),
     },
   });
@@ -63,6 +66,11 @@ const SYNC_LOCK_KEY = 'contentful:sync:lock'
 const SYNC_LOCK_TTL = 60 // seconds
 
 siteConfigRoute.post("/sync-content", authMiddleware, adminMiddleware, async (c) => {
+  const cmsMode = c.get('cmsMode')
+  if (cmsMode === 'cloudflare') {
+    throw serviceUnavailable('Contentful sync is not available in Cloudflare-only mode.')
+  }
+
   if (!ContentfulManagement.isConfigured(c.env.CONTENTFUL_SPACE_ID, c.env.CONTENTFUL_MANAGEMENT_TOKEN)) {
     throw serviceUnavailable('Contentful Management API credentials not configured.')
   }

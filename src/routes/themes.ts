@@ -83,7 +83,9 @@ themesRoute.post(
 
     try {
       const [created] = await db.insert(themes).values(body).returning()
-      c.executionCtx.waitUntil(pushThemeToContentful(c.env, created))
+      if (c.get('cmsMode') === 'hybrid') {
+        c.executionCtx.waitUntil(pushThemeToContentful(c.env, created))
+      }
       return c.json({ data: created }, 201)
     } catch (err: any) {
       if (err.message && err.message.includes('UNIQUE constraint failed')) {
@@ -113,7 +115,9 @@ themesRoute.patch(
 
       if (!updated) throw notFound('Theme')
 
-      c.executionCtx.waitUntil(pushThemeToContentful(c.env, updated))
+      if (c.get('cmsMode') === 'hybrid') {
+        c.executionCtx.waitUntil(pushThemeToContentful(c.env, updated))
+      }
       return c.json({ data: updated })
     } catch (err: any) {
       if (err.message && err.message.includes('UNIQUE constraint failed')) {
@@ -133,6 +137,8 @@ themesRoute.delete('/:id', authMiddleware, adminMiddleware, async (c) => {
 
   if (!deleted) throw notFound('Theme')
 
-  c.executionCtx.waitUntil(deleteThemeFromContentful(c.env, id))
+  if (c.get('cmsMode') === 'hybrid') {
+    c.executionCtx.waitUntil(deleteThemeFromContentful(c.env, id))
+  }
   return c.body(null, 204)
 })

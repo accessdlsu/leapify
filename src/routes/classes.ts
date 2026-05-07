@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { eq, and, sql } from 'drizzle-orm'
 import type { LeapifyEnv } from '../types'
 import { createDb } from '../db'
-import { events } from '../db/schema/events'
+import { events } from '../db/schema/classes'
 import { CacheService } from '../services/cache'
 import { SlotsService } from '../services/slots'
 import { GFormsService } from '../services/gforms'
@@ -39,7 +39,7 @@ async function pushEventToContentful(env: LeapifyEnv['Bindings'], event: typeof 
     const fields: Record<string, Record<string, unknown>> = {
       title: ContentfulManagement.locale(event.title),
       slug: ContentfulManagement.locale(event.slug),
-      isMajor: ContentfulManagement.locale(event.isMajor),
+      isSpotlight: ContentfulManagement.locale(event.isSpotlight),
       maxSlots: ContentfulManagement.locale(event.maxSlots),
     }
     if (event.themeId) fields.theme = ContentfulManagement.entryRef(event.themeId)
@@ -106,7 +106,7 @@ const createEventSchema = z.object({
   startTime: z.string().optional(),
   endTime: z.string().optional(),
   registrationClosesAt: z.number().optional(),
-  isMajor: z.boolean().default(false),
+  isSpotlight: z.boolean().default(false),
   maxSlots: z.number().int().min(0).default(0),
   gformsId: z.string().optional(),
   gformsUrl: z.string().url().optional(),
@@ -116,7 +116,7 @@ const createEventSchema = z.object({
   status: z.enum(['draft', 'queued', 'published']).default('draft'),
 })
 
-export const eventsRoute = new Hono<LeapifyEnv>()
+export const classesRoute = new Hono<LeapifyEnv>()
 
 function generateSlug(title: string): string {
   return title
@@ -128,7 +128,7 @@ function generateSlug(title: string): string {
 }
 
 // GET /events/admin — admin only, returns all events regardless of status
-eventsRoute.get('/admin', authMiddleware, adminMiddleware, async (c) => {
+classesRoute.get('/admin', authMiddleware, adminMiddleware, async (c) => {
   const db = createDb(c.env.DB)
   const data = await db.query.events.findMany({
     with: { theme: true, organization: true },
@@ -138,7 +138,7 @@ eventsRoute.get('/admin', authMiddleware, adminMiddleware, async (c) => {
 })
 
 // POST /events/admin/publish — admin only, batch publish queued events
-eventsRoute.post('/admin/publish', authMiddleware, adminMiddleware, async (c) => {
+classesRoute.post('/admin/publish', authMiddleware, adminMiddleware, async (c) => {
   const body = await c.req.json<{ ids: string[]; releaseAt?: number }>()
   const db = createDb(c.env.DB)
   const cache = new CacheService(c.env.KV)
@@ -180,7 +180,7 @@ eventsRoute.post('/admin/publish', authMiddleware, adminMiddleware, async (c) =>
 })
 
 // GET /events — public, ETag + 7-day browser cache
-eventsRoute.get('/', eventsListRateLimit, async (c) => {
+classesRoute.get('/', eventsListRateLimit, async (c) => {
   const db = createDb(c.env.DB)
   const cache = new CacheService(c.env.KV)
 
@@ -226,7 +226,7 @@ eventsRoute.get('/', eventsListRateLimit, async (c) => {
           startTime: true,
           endTime: true,
           registrationClosesAt: true,
-          isMajor: true,
+          isSpotlight: true,
           maxSlots: true,
           registeredSlots: true,
           gformsUrl: true,
@@ -246,7 +246,7 @@ eventsRoute.get('/', eventsListRateLimit, async (c) => {
 })
 
 // GET /events/:slug
-eventsRoute.get('/:slug', async (c) => {
+classesRoute.get('/:slug', async (c) => {
   const { slug } = c.req.param()
   const db = createDb(c.env.DB)
 
@@ -263,7 +263,7 @@ eventsRoute.get('/:slug', async (c) => {
 })
 
 // GET /events/:slug/slots — real-time, CF Cache 5s
-eventsRoute.get('/:slug/slots', eventsSlotsRateLimit, async (c) => {
+classesRoute.get('/:slug/slots', eventsSlotsRateLimit, async (c) => {
   const { slug } = c.req.param()
   const db = createDb(c.env.DB)
   const cache = new CacheService(c.env.KV)
@@ -279,7 +279,7 @@ eventsRoute.get('/:slug/slots', eventsSlotsRateLimit, async (c) => {
 })
 
 // POST /events — admin only
-eventsRoute.post(
+classesRoute.post(
   '/',
   authMiddleware,
   adminMiddleware,
@@ -328,14 +328,15 @@ eventsRoute.post(
       cache.del(EVENTS_ETAG_KV_KEY),
     ])
 
-    c.executionCtx.waitUntil(pushEventToContentful(c.env, created!))
-
+    if (c.get('cmsMode') === 'hybrid') {
+      c.executionCtx.waitUntil(pushEventToContentful(c.env, created!))
+    }
     return c.json({ data: created }, 201)
   },
 )
 
 // PATCH /events/:slug — admin only
-eventsRoute.patch('/:slug', authMiddleware, adminMiddleware, async (c) => {
+classesRoute.patch('/:slug', authMiddleware, adminMiddleware, async (c) => {
   const { slug } = c.req.param()
   const body = await c.req.json<Partial<z.infer<typeof createEventSchema>>>()
   const db = createDb(c.env.DB)
@@ -359,13 +360,15 @@ eventsRoute.patch('/:slug', authMiddleware, adminMiddleware, async (c) => {
     cache.del(EVENTS_ETAG_KV_KEY),
   ])
 
-  c.executionCtx.waitUntil(pushEventToContentful(c.env, updated))
+  if (c.get('cmsMode') === 'hybrid') {
+    c.executionCtx.waitUntil(pushEventToContentful(c.env, updated))
+  }
 
   return c.json({ data: updated })
 })
 
 // DELETE /events/:slug — admin only
-eventsRoute.delete('/:slug', authMiddleware, adminMiddleware, async (c) => {
+classesRoute.delete('/:slug', authMiddleware, adminMiddleware, async (c) => {
   const { slug } = c.req.param()
   const db = createDb(c.env.DB)
   const cache = new CacheService(c.env.KV)

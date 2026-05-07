@@ -1,5 +1,5 @@
 export * from './users'
-export * from './events'
+export * from './classes'
 export * from './organizations'
 export * from './site-config'
 export * from './faqs'

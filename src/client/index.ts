@@ -33,6 +33,7 @@ export type {
   SnapshotResult,
   HealthResponse,
   RuntimeConfig,
+  CmsMode,
 } from "./types";
 
 export {
@@ -242,68 +243,68 @@ export function createLeapifyClient(baseUrl: string, getToken?: GetTokenFn) {
     // ── Events ─────────────────────────────────────────────────────────────
 
     /**
-     * GET /api/events
-     * Returns all published events. Response is ETag-cached for 7 days.
+     * GET /api/classes
+     * Returns all published classes. Response is ETag-cached for 7 days.
      */
     getEvents(): Promise<LeapEvent[]> {
-      return get<LeapEvent[]>("/api/events");
+      return get<LeapEvent[]>("/api/classes");
     },
 
     /**
-     * GET /api/events/admin — admin only.
-     * Returns all events regardless of status.
+     * GET /api/classes/admin — admin only.
+     * Returns all classes regardless of status.
      */
     getAdminEvents(): Promise<LeapEvent[]> {
-      return get<LeapEvent[]>("/api/events/admin");
+      return get<LeapEvent[]>("/api/classes/admin");
     },
 
     /**
-     * POST /api/events/admin/publish — admin only.
-     * Batch publish queued events immediately or schedule them for later.
+     * POST /api/classes/admin/publish — admin only.
+     * Batch publish queued classes immediately or schedule them for later.
      */
     batchPublish(ids: string[], releaseAt?: number): Promise<{ updated: number }> {
-      return post("/api/events/admin/publish", { ids, releaseAt });
+      return post("/api/classes/admin/publish", { ids, releaseAt });
     },
 
     /**
-     * GET /api/events/:slug
-     * Returns a single published event by slug.
+     * GET /api/classes/:slug
+     * Returns a single published class by slug.
      */
     getEvent(slug: string): Promise<LeapEvent> {
-      return get<LeapEvent>(`/api/events/${encodeURIComponent(slug)}`);
+      return get<LeapEvent>(`/api/classes/${encodeURIComponent(slug)}`);
     },
 
     /**
-     * GET /api/events/:slug/slots
+     * GET /api/classes/:slug/slots
      * Returns real-time slot availability. CF edge caches this for 5 seconds.
-     * Poll every 8–10 seconds on event detail pages.
+     * Poll every 8–10 seconds on class detail pages.
      */
     getSlots(slug: string): Promise<SlotInfo> {
-      return get<SlotInfo>(`/api/events/${encodeURIComponent(slug)}/slots`);
+      return get<SlotInfo>(`/api/classes/${encodeURIComponent(slug)}/slots`);
     },
 
     /**
-     * POST /api/events — admin only.
-     * Creates a new event. Auto-generates slug from title.
+     * POST /api/classes — admin only.
+     * Creates a new class. Auto-generates slug from title.
      */
     createEvent(data: CreateEventBody): Promise<LeapEvent> {
-      return post<LeapEvent>("/api/events", data);
+      return post<LeapEvent>("/api/classes", data);
     },
 
     /**
-     * PATCH /api/events/:slug — admin only.
-     * Updates an existing event by slug.
+     * PATCH /api/classes/:slug — admin only.
+     * Updates an existing class by slug.
      */
     updateEvent(slug: string, data: Partial<CreateEventBody>): Promise<LeapEvent> {
-      return patch<LeapEvent>(`/api/events/${encodeURIComponent(slug)}`, data);
+      return patch<LeapEvent>(`/api/classes/${encodeURIComponent(slug)}`, data);
     },
 
     /**
-     * DELETE /api/events/:slug — admin only.
-     * Deletes an event.
+     * DELETE /api/classes/:slug — admin only.
+     * Deletes a class.
      */
     deleteEvent(slug: string): Promise<void> {
-      return del<void>(`/api/events/${encodeURIComponent(slug)}`);
+      return del<void>(`/api/classes/${encodeURIComponent(slug)}`);
     },
 
     // ── Themes ─────────────────────────────────────────────────────────────

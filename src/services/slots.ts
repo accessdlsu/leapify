@@ -1,6 +1,6 @@
 import { eq, sql } from 'drizzle-orm'
 import type { LeapifyDb } from '../db'
-import { events } from '../db/schema/events'
+import { events } from '../db/schema/classes'
 import type { CacheService } from './cache'
 
 const SLOT_KV_PREFIX = 'slots:'

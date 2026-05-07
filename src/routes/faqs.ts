@@ -86,7 +86,9 @@ faqsRoute.post(
     await cache.del(FAQS_KV_KEY)
 
     // Push to Contentful in background (non-blocking, keeps execution context alive)
-    c.executionCtx.waitUntil(pushFaqToContentful(c.env, created))
+    if (c.get('cmsMode') === 'hybrid') {
+      c.executionCtx.waitUntil(pushFaqToContentful(c.env, created))
+    }
 
     return c.json({ data: created }, 201)
   },
@@ -110,7 +112,9 @@ faqsRoute.patch('/:id', authMiddleware, adminMiddleware, async (c) => {
   await cache.del(FAQS_KV_KEY)
 
   // Push to Contentful in background (non-blocking, keeps execution context alive)
-  c.executionCtx.waitUntil(pushFaqToContentful(c.env, updated))
+  if (c.get('cmsMode') === 'hybrid') {
+    c.executionCtx.waitUntil(pushFaqToContentful(c.env, updated))
+  }
 
   return c.json({ data: updated })
 })

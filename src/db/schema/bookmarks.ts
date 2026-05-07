@@ -6,7 +6,7 @@ import {
 } from "drizzle-orm/sqlite-core";
 import { sql, relations } from "drizzle-orm";
 import { users } from "./users";
-import { events } from "./events";
+import { events } from "./classes";
 
 export const bookmarks = sqliteTable(
   "bookmarks",

@@ -1,7 +1,7 @@
 import { and, eq, lte } from 'drizzle-orm'
 import type { LeapifyBindings } from '../types'
 import { createDb } from '../db'
-import { events } from '../db/schema/events'
+import { events } from '../db/schema/classes'
 import { GFormsService } from '../services/gforms'
 
 const RENEWAL_WINDOW = 86400 // renew watches expiring within 24 hours

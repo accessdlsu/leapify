@@ -5,7 +5,7 @@ import { createDb } from "../db";
 import { users, type UserRole } from "../db/schema/users";
 import { authUser } from "../db/schema/auth";
 import { bookmarks } from "../db/schema/bookmarks";
-import { events } from "../db/schema/events";
+import { events } from "../db/schema/classes";
 import { authMiddleware, adminMiddleware, optionalAuthMiddleware } from "../auth/middleware";
 import { notFound, badRequest } from "../lib/errors";
 import { bookmarksRateLimit } from "../lib/middleware/rate-limit";

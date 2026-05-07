@@ -150,7 +150,9 @@ export type {
   LeapifyEnv,
   SiteConfigKey,
   SiteConfigMap,
+  CmsMode,
 } from "./types";
+export { parseCmsMode, shouldPushToContentful, shouldPullFromContentful } from "./types";
 export type { LeapifyUser } from "./auth/types";
 export type { LeapifyDb } from "./db";
 export type { LeapifyJob } from "./queues/jobs";

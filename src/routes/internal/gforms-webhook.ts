@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import type { LeapifyEnv } from "../../types";
 import { createDb } from "../../db";
-import { events } from "../../db/schema/events";
+import { events } from "../../db/schema/classes";
 import { SlotsService } from "../../services/slots";
 import { CacheService } from "../../services/cache";
 import { internalMiddleware } from "../../auth/middleware";

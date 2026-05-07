@@ -1,6 +1,6 @@
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core'
 import { relations } from 'drizzle-orm'
-import { events } from './events'
+import { events } from './classes'
 
 export const themes = sqliteTable('themes', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID().replace(/-/g, '')),
