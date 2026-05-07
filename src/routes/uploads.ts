@@ -40,8 +40,8 @@ uploadsRoute.get('/images/*', async (c) => {
   const headers: Record<string, string> = {
     etag: object.httpEtag,
     // Cache at the edge/browser for 1 month
-    'Cache-Control': 'public, max-age=2592000, immutable',
-  }
+    "Cache-Control": "public, max-age=2592000, immutable",
+  };
 
   if (object.httpMetadata?.contentType) {
     headers['Content-Type'] = object.httpMetadata.contentType

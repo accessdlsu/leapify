@@ -104,14 +104,24 @@ export function createAuth(env: LeapifyBindings) {
                 .insert(users)
                 .values(base)
                 .onConflictDoUpdate({
-                  target: users.betterAuthId,
-                  set: { role: 'super_admin' },
+                  target: users.email,
+                  set: {
+                    betterAuthId: user.id,
+                    role: 'super_admin',
+                    name: user.name ?? user.email.split('@')[0],
+                  },
                 })
             } else {
               await db
                 .insert(users)
                 .values(base)
-                .onConflictDoNothing({ target: users.betterAuthId })
+                .onConflictDoUpdate({
+                  target: users.email,
+                  set: {
+                    betterAuthId: user.id,
+                    name: user.name ?? user.email.split('@')[0],
+                  },
+                })
             }
           }
         }

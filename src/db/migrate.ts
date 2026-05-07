@@ -220,7 +220,8 @@ export async function ensureDatabase(d1: D1Database): Promise<void> {
       // Ignore "duplicate column" or "no such column" errors from ALTER TABLE
       if (
         err?.message?.includes("duplicate column") ||
-        err?.message?.includes("no such column: is_major")
+        (err?.message?.includes("no such column") &&
+          err?.message?.includes("is_major"))
       ) {
         continue;
       }

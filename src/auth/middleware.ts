@@ -56,7 +56,13 @@ async function resolveUser(
         email: betterAuthUserEmail,
         name: betterAuthUserName ?? betterAuthUserEmail.split('@')[0],
       })
-      .onConflictDoNothing({ target: users.betterAuthId })
+      .onConflictDoUpdate({
+        target: users.email,
+        set: {
+          betterAuthId: betterAuthUserId,
+          name: betterAuthUserName ?? betterAuthUserEmail.split('@')[0],
+        },
+      })
       .returning()
     dbUser = created
   }

@@ -44,7 +44,15 @@ const CHALLENGE_TTL_SEC = 120
 const COOKIE_MAX_AGE_SEC = 3600
 
 /** Paths exempt from PoW challenge */
-const EXEMPT_PATHS = ['/health', '/internal', '/api/auth']
+const EXEMPT_PATHS = [
+  "/health",
+  "/internal",
+  "/api/auth",
+  "/api/uploads/images",
+  "/api/classes",
+  "/api/faqs",
+  "/api/config",
+];
 
 // ─── Base64url Utilities ────────────────────────────────────────────────────────
 
@@ -280,10 +288,13 @@ export async function handlePowVerify(
   const ip = getClientIp(c)
   const token = await signCookie(secret, ip)
 
+  const isSecure = c.req.raw.url.startsWith("https") || c.req.header("x-forwarded-proto") === "https";
   c.header(
-    'Set-Cookie',
-    `${POW_COOKIE_NAME}=${token}; Path=/; Max-Age=${COOKIE_MAX_AGE_SEC}; Secure; HttpOnly; SameSite=Lax`
-  )
+    "Set-Cookie",
+    `${POW_COOKIE_NAME}=${token}; Path=/; Max-Age=${COOKIE_MAX_AGE_SEC}; ${
+      isSecure ? "Secure; " : ""
+    }HttpOnly; SameSite=Lax`,
+  );
 
   return c.json({ redirect: redir || '/' })
 }
@@ -303,8 +314,13 @@ export function createPowChallengeMiddleware() {
     // Always pass through the verify endpoint itself
     if (c.req.path === POW_VERIFY_PATH) return next()
 
-    // Skip exempt paths (health, internal webhooks)
-    if (EXEMPT_PATHS.some((p) => c.req.path.startsWith(p))) return next()
+    const normalizedPath = c.req.path.toLowerCase().replace(/\/$/, "");
+    const isExempt = EXEMPT_PATHS.some((p) => {
+      const ep = p.toLowerCase().replace(/\/$/, "");
+      return normalizedPath === ep || normalizedPath.startsWith(ep + "/");
+    });
+    console.log(`[pow] path=${c.req.path} normalized=${normalizedPath} exempt=${isExempt}`);
+    if (isExempt) return next();
 
     // Skip for OPTIONS requests (preflights should never be challenged)
     if (c.req.method === 'OPTIONS') return next()
