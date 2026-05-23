@@ -1,8 +1,9 @@
 /**
  * Browser-safe session initialization helper.
  *
- * Solves the PoW challenge (if active), checks for an existing session token,
- * and fetches the user profile. Returns the authenticated user or null.
+ * Checks for an existing session token and fetches the user profile.
+ * Callers should run solveTurnstileChallenge() separately if the server
+ * enforces Turnstile for unauthenticated requests.
  *
  * Import from 'leapify/client' — no Cloudflare, Drizzle, or Hono deps.
  *
@@ -18,11 +19,10 @@
  * }
  */
 
-import { solveTurnstileChallenge } from "./turnstile";
 import type { UserProfile } from "./types";
 
 /**
- * Initialize a browser session: solve PoW, restore existing token, fetch profile.
+ * Initialize a browser session: restore existing token and fetch profile.
  *
  * @param baseUrl - The Leapify Worker URL.
  * @param getToken - Async function returning the current session token, or null.
@@ -32,8 +32,6 @@ export async function initializeSession(
   baseUrl: string,
   getToken: () => Promise<string | null>,
 ): Promise<UserProfile | null> {
-  await solveTurnstileChallenge(baseUrl);
-
   const token = await getToken();
   if (!token) return null;
 

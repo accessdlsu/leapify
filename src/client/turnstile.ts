@@ -4,7 +4,8 @@ declare global {
       render: (
         container: string | HTMLElement,
         opts: { sitekey: string; callback: (token: string) => void },
-      ) => void;
+      ) => string;
+      remove: (widgetId: string) => void;
     };
   }
 }
@@ -36,6 +37,16 @@ function loadTurnstileScript(): Promise<void> {
 }
 
 function executeTurnstile(siteKey: string): Promise<string> {
+  let widgetId: string | undefined;
+
+  const cleanup = () => {
+    if (widgetId && typeof window.turnstile?.remove === "function") {
+      window.turnstile.remove(widgetId);
+    }
+    const el = document.getElementById("leapify-turnstile-container");
+    el?.remove();
+  };
+
   return new Promise((resolve) => {
     const container = document.createElement("div");
     container.id = "leapify-turnstile-container";
@@ -44,18 +55,18 @@ function executeTurnstile(siteKey: string): Promise<string> {
 
     // Timeout guard — Turnstile iframe can hang if postMessage origin mismatch
     // or other widget issues prevent the callback from firing.
-    // After 10s, continue without the cookie; the server-side auth middleware
+    // After 3s, continue without the cookie; the server-side auth middleware
     // will handle verified sessions via the Authorization header instead.
     const timer = setTimeout(() => {
-      container.remove();
+      cleanup();
       resolve("");
-    }, 10_000);
+    }, 3_000);
 
-    window.turnstile.render(`#${container.id}`, {
+    widgetId = window.turnstile.render(`#${container.id}`, {
       sitekey: siteKey,
       callback: (token: string) => {
         clearTimeout(timer);
-        container.remove();
+        cleanup();
         resolve(token);
       },
     });
@@ -87,6 +98,8 @@ export async function solveTurnstileChallenge(
   try {
     await loadTurnstileScript();
     const token = await executeTurnstile(siteKey);
+
+    if (!token) return false;
 
     const res = await fetch(`${base}${TURNSTILE_VERIFY_PATH}`, {
       method: "POST",
