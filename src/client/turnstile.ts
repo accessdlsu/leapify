@@ -42,9 +42,19 @@ function executeTurnstile(siteKey: string): Promise<string> {
     container.style.display = "none";
     document.body.appendChild(container);
 
+    // Timeout guard — Turnstile iframe can hang if postMessage origin mismatch
+    // or other widget issues prevent the callback from firing.
+    // After 10s, continue without the cookie; the server-side auth middleware
+    // will handle verified sessions via the Authorization header instead.
+    const timer = setTimeout(() => {
+      container.remove();
+      resolve("");
+    }, 10_000);
+
     window.turnstile.render(`#${container.id}`, {
       sitekey: siteKey,
       callback: (token: string) => {
+        clearTimeout(timer);
         container.remove();
         resolve(token);
       },
