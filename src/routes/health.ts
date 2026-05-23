@@ -67,33 +67,6 @@ async function probeSes(
   }
 }
 
-async function probeContentful(
-  spaceId: string,
-  accessToken: string,
-  environment: string,
-): Promise<ServiceHealth> {
-  const start = Date.now()
-  try {
-    const res = await fetch(
-      `https://cdn.contentful.com/spaces/${spaceId}/environments/${environment}/entries?limit=0`,
-      { headers: { Authorization: `Bearer ${accessToken}` } },
-    )
-    return {
-      configured: true,
-      ok: res.ok,
-      latencyMs: Date.now() - start,
-      ...(res.ok ? {} : { error: `HTTP ${res.status}` }),
-    }
-  } catch (e) {
-    return {
-      configured: true,
-      ok: false,
-      latencyMs: Date.now() - start,
-      error: String(e),
-    }
-  }
-}
-
 async function probeGForms(
   serviceAccountJson: string,
 ): Promise<ServiceHealth> {
@@ -190,7 +163,6 @@ async function probeGForms(
  *     services: {
  *       ses:       { configured, ok, latencyMs, error? },
  *       resend:    { configured, ok, latencyMs, error? },
- *       contentful: { configured, ok, latencyMs, error? },
  *       gforms:    { configured, ok, latencyMs, error? },
  *     }
  *   }
@@ -200,7 +172,6 @@ healthRoute.get('/', async (c) => {
 
   const hasSes = Boolean(env.SES_REGION) && Boolean(env.SES_ACCESS_KEY_ID) && Boolean(env.SES_SECRET_ACCESS_KEY)
   const hasResend = Boolean(env.RESEND_API_KEY)
-  const hasContentful = Boolean(env.CONTENTFUL_SPACE_ID) && Boolean(env.CONTENTFUL_ACCESS_TOKEN)
   const hasGForms = Boolean(env.GFORMS_SERVICE_ACCOUNT_JSON)
 
   const probes: Promise<[string, ServiceHealth]>[] = []
@@ -215,15 +186,6 @@ healthRoute.get('/', async (c) => {
   if (hasResend) {
     probes.push(
       probeResend(env.RESEND_API_KEY!).then((h) => ['resend', h] as const),
-    )
-  }
-  if (hasContentful) {
-    probes.push(
-      probeContentful(
-        env.CONTENTFUL_SPACE_ID!,
-        env.CONTENTFUL_ACCESS_TOKEN!,
-        env.CONTENTFUL_ENVIRONMENT || 'master',
-      ).then((h) => ['contentful', h] as const),
     )
   }
   if (hasGForms) {

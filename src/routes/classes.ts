@@ -8,7 +8,6 @@ import { events } from '../db/schema/classes'
 import { CacheService } from '../services/cache'
 import { SlotsService } from '../services/slots'
 import { GFormsService } from '../services/gforms'
-import { ContentfulManagement } from '../services/contentful-management'
 import { authMiddleware, adminMiddleware } from '../auth/middleware'
 import { notFound } from '../lib/errors'
 import {
@@ -20,78 +19,6 @@ import {
 const EVENTS_LIST_KV_KEY = 'events:list'
 const EVENTS_ETAG_KV_KEY = 'events:etag'
 const EVENTS_LIST_TTL = 300 // 5 min KV cache for list
-
-const CF_EVENT_CT = 'event'
-
-/**
- * Push a single event to Contentful in the background.
- */
-async function pushEventToContentful(env: LeapifyEnv['Bindings'], event: typeof events.$inferSelect) {
-  if (!ContentfulManagement.isConfigured(env.CONTENTFUL_SPACE_ID, env.CONTENTFUL_MANAGEMENT_TOKEN)) return
-
-  const mgmt = new ContentfulManagement(
-    env.CONTENTFUL_SPACE_ID!,
-    env.CONTENTFUL_MANAGEMENT_TOKEN!,
-    env.CONTENTFUL_ENVIRONMENT,
-  )
-
-  try {
-    const fields: Record<string, Record<string, unknown>> = {
-      title: ContentfulManagement.locale(event.title),
-      slug: ContentfulManagement.locale(event.slug),
-      isSpotlight: ContentfulManagement.locale(event.isSpotlight),
-      maxSlots: ContentfulManagement.locale(event.maxSlots),
-    }
-    if (event.themeId) fields.theme = ContentfulManagement.entryRef(event.themeId)
-    if (event.organizationId) fields.organization = ContentfulManagement.entryRef(event.organizationId)
-    if (event.venue) fields.venue = ContentfulManagement.locale(event.venue)
-    if (event.dateTime) {
-      // Convert human-readable date to ISO 8601 for Contentful Date field
-      const parsed = new Date(event.dateTime)
-      fields.date = ContentfulManagement.locale(
-        Number.isNaN(parsed.getTime()) ? event.dateTime : parsed.toISOString(),
-      )
-    }
-    if (event.price) fields.price = ContentfulManagement.locale(event.price)
-    if (event.classCode) fields.classCode = ContentfulManagement.locale(event.classCode)
-    if (event.startTime) fields.startTime = ContentfulManagement.locale(event.startTime)
-    if (event.endTime) fields.endTime = ContentfulManagement.locale(event.endTime)
-    if (event.gformsUrl) fields.gformsUrl = ContentfulManagement.locale(event.gformsUrl)
-    if (event.gformsEditorUrl) fields.gformsEditorUrl = ContentfulManagement.locale(event.gformsEditorUrl)
-    if (event.registrationClosesAt) {
-      fields.registrationClosesAt = ContentfulManagement.locale(
-        new Date(event.registrationClosesAt * 1000).toISOString(),
-      )
-    }
-    // Upload background image to Contentful as an asset
-    if (event.backgroundImageUrl && env.FILES) {
-      try {
-        const imageKey = new URL(event.backgroundImageUrl).pathname.replace(/^\/api\/uploads\/images\//, '')
-        console.log(`[Contentful] Attempting image sync for event ${event.id}, key: ${imageKey}`)
-        const object = await env.FILES.get(imageKey)
-        if (object) {
-          const data = await object.arrayBuffer()
-          const contentType = object.httpMetadata?.contentType || 'image/jpeg'
-          const fileName = imageKey.split('/').pop() || 'image.jpg'
-          const uploadId = await mgmt.uploadFile(fileName, data, contentType)
-          const asset = await mgmt.createAssetFromUpload(uploadId, event.title, fileName, contentType)
-          fields.image = ContentfulManagement.assetRef(asset.id)
-          console.log(`[Contentful] Image synced for event ${event.id}, asset: ${asset.id}`)
-        } else {
-          console.warn(`[Contentful] Image not found in R2 for event ${event.id}, key: ${imageKey}`)
-        }
-      } catch (err) {
-        console.warn(`[Contentful] Failed to upload image for event ${event.id}:`, err)
-      }
-    } else if (event.backgroundImageUrl && !env.FILES) {
-      console.warn(`[Contentful] FILES binding not available, skipping image sync for event ${event.id}`)
-    }
-
-    await mgmt.upsertEntry(CF_EVENT_CT, event.id, fields)
-  } catch (err) {
-    console.warn(`[Contentful] Failed to sync event ${event.id}:`, err)
-  }
-}
 
 const createEventSchema = z.object({
   themeId: z.string().min(1),
@@ -112,7 +39,6 @@ const createEventSchema = z.object({
   gformsUrl: z.string().url().optional(),
   gformsEditorUrl: z.string().url().optional(),
   releaseAt: z.number().optional(),
-  contentfulEntryId: z.string().optional(),
   status: z.enum(['draft', 'queued', 'published']).default('draft'),
 })
 
@@ -328,9 +254,6 @@ classesRoute.post(
       cache.del(EVENTS_ETAG_KV_KEY),
     ])
 
-    if (c.get('cmsMode') === 'hybrid') {
-      c.executionCtx.waitUntil(pushEventToContentful(c.env, created!))
-    }
     return c.json({ data: created }, 201)
   },
 )
@@ -359,10 +282,6 @@ classesRoute.patch('/:slug', authMiddleware, adminMiddleware, async (c) => {
     cache.del(EVENTS_LIST_KV_KEY),
     cache.del(EVENTS_ETAG_KV_KEY),
   ])
-
-  if (c.get('cmsMode') === 'hybrid') {
-    c.executionCtx.waitUntil(pushEventToContentful(c.env, updated))
-  }
 
   return c.json({ data: updated })
 })

@@ -34,7 +34,10 @@ export function createRateLimitMiddleware(config: RateLimitConfig) {
   const { endpoint, limit, windowSec, identifier } = config
 
   return createMiddleware<{ Bindings: LeapifyBindings }>(async (c, next) => {
-    // Skip rate limiting for PoW challenge verification (clients solving challenges should not be blocked)
+    // Skip rate limiting for challenge verification (clients solving challenges should not be blocked)
+    if (c.req.path === '/.well-known/leapify/turnstile/verify') return next()
+
+    // Also skip old PoW path for backward compatibility
     if (c.req.path === '/.well-known/leapify/pow/verify') return next()
 
     const id =

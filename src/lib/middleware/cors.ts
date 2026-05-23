@@ -3,17 +3,12 @@ import { cors } from 'hono/cors'
 import type { MiddlewareHandler } from 'hono'
 
 export function createCorsMiddleware(allowedOrigins: string[]): MiddlewareHandler {
-  const honoCors = cors({
-    origin: allowedOrigins,
-    allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization'],
-    exposeHeaders: ['ETag', 'Last-Modified', 'Cache-Control'],
-    maxAge: 86400,
-    credentials: true,
-  })
-
   return async (c, next) => {
     const origin = c.req.header("origin");
+
+    // Get dynamic allowed origins from KV if present, fallback to static list
+    const dynamicOriginsJson = (await c.env.KV.get('config:allowed_origins', 'json')) as string[] | null
+    const currentAllowedOrigins = dynamicOriginsJson ?? allowedOrigins
 
     // Public Image Exemption: Allow any origin for images and skip strict checks.
     if (c.req.path.startsWith("/api/uploads/images")) {
@@ -31,8 +26,8 @@ export function createCorsMiddleware(allowedOrigins: string[]): MiddlewareHandle
       !c.req.path.startsWith("/api/auth") &&
       !c.req.path.startsWith("/internal") &&
       origin &&
-      !allowedOrigins.includes("*") &&
-      !allowedOrigins.includes(origin)
+      !currentAllowedOrigins.includes("*") &&
+      !currentAllowedOrigins.includes(origin)
     ) {
       return c.json(
         {
@@ -44,6 +39,15 @@ export function createCorsMiddleware(allowedOrigins: string[]): MiddlewareHandle
         403,
       );
     }
+
+    const honoCors = cors({
+      origin: currentAllowedOrigins,
+      allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowHeaders: ['Content-Type', 'Authorization'],
+      exposeHeaders: ['ETag', 'Last-Modified', 'Cache-Control'],
+      maxAge: 86400,
+      credentials: true,
+    })
 
     return honoCors(c, next);
   };

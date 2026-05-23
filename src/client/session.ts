@@ -18,7 +18,7 @@
  * }
  */
 
-import { solvePowChallenge } from "./pow";
+import { solveTurnstileChallenge } from "./turnstile";
 import type { UserProfile } from "./types";
 
 /**
@@ -32,7 +32,7 @@ export async function initializeSession(
   baseUrl: string,
   getToken: () => Promise<string | null>,
 ): Promise<UserProfile | null> {
-  await solvePowChallenge(baseUrl);
+  await solveTurnstileChallenge(baseUrl);
 
   const token = await getToken();
   if (!token) return null;

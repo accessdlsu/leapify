@@ -107,10 +107,7 @@ async function processJob(
       break
     }
 
-    case 'snapshot_content': {
-      console.log(`[Queue] snapshot_content triggered at ${job.payload.triggeredAt}`)
-      break
-    }
+
 
     case 'notify_batch_release': {
       console.log(`[Queue] notify_batch_release: ${job.payload.eventIds.length} events released`)

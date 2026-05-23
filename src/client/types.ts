@@ -133,7 +133,7 @@ export interface SiteConfig {
   siteName: string | null;
   registrationGloballyOpen: boolean;
   maintenanceMode: boolean;
-  cmsMode: "cloudflare" | "contentful" | "hybrid";
+  allowedOrigins?: string[];
   now: number;
 }
 
@@ -180,7 +180,6 @@ export interface CreateEventBody {
   gformsEditorUrl?: string;
   releaseAt?: number;
   registrationClosesAt?: number;
-  contentfulEntryId?: string;
   status?: "draft" | "queued" | "published";
 }
 
@@ -192,19 +191,6 @@ export interface CreateFaqBody {
   answer: string;
   category?: string;
   sortOrder?: number;
-}
-
-/**
- * Response from POST /config/sync-content (admin content sync).
- */
-export interface SnapshotResult {
-  themesSynced: number;
-  eventsSynced: number;
-  faqsSynced: number;
-  organizationsSynced: number;
-  imagesUploaded: number;
-  imagesSkipped: number;
-  errors: string[];
 }
 
 /**
@@ -230,6 +216,7 @@ export interface HealthResponse {
 export interface RuntimeConfig {
   production: boolean;
   leapifyApiUrl: string;
+  turnstileSiteKey?: string;
 }
 
-export type CmsMode = "cloudflare" | "contentful" | "hybrid";
+

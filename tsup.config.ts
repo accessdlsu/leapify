@@ -7,7 +7,7 @@ export default defineConfig([
       'src/index.ts',
       'src/client/index.ts',
       'src/client/types.ts',
-      'src/lib/middleware/pow-challenge.ts',
+      'src/lib/middleware/turnstile-challenge.ts',
     ],
     format: ['esm', 'cjs'],
     dts: false,
@@ -35,7 +35,6 @@ export default defineConfig([
     outDir: 'dist',
     // Bundle everything into one file so wrangler can upload it without
     // needing a bundler step in the consumer's deploy pipeline.
-    noExternal: [/^(?!contentful-management$)/],
     // Keep the browser guard from src/index.ts from throwing in CF Workers.
     // CF Workers don't define `document` so the guard is fine — but we
     // explicitly mark it as no-side-effects-removal.

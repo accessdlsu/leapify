@@ -15,10 +15,6 @@ export type LeapifyJob =
       payload: { action: string; userId: string; meta: unknown }
     }
   | {
-      type: 'snapshot_content'
-      payload: { triggeredAt: number }
-    }
-  | {
       type: 'notify_batch_release'
       payload: { eventIds: string[]; releasedAt: number }
     }

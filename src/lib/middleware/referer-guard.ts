@@ -26,12 +26,15 @@ export function createRefererGuard(allowedOrigins: string[]) {
     // Skip for operational routes
     if (SKIP_PREFIXES.some((p) => c.req.path.startsWith(p))) return next()
 
-    // Wildcard allowedOrigins = dev/library mode, skip enforcement
-    if (allowedOrigins.includes('*')) return next()
+    const dynamicOriginsJson = (await c.env.KV.get('config:allowed_origins', 'json')) as string[] | null
+    const currentAllowedOrigins = dynamicOriginsJson ?? allowedOrigins
+
+    // Wildcard currentAllowedOrigins = dev/library mode, skip enforcement
+    if (currentAllowedOrigins.includes('*')) return next()
 
     const referer = c.req.header('referer') ?? ''
 
-    const isAllowed = allowedOrigins.some((origin) => referer.startsWith(origin))
+    const isAllowed = currentAllowedOrigins.some((origin) => referer.startsWith(origin))
     if (!isAllowed) {
       throw forbidden('Request origin not permitted')
     }

@@ -30,10 +30,8 @@ export type {
   EventStatus,
   CreateEventBody,
   CreateFaqBody,
-  SnapshotResult,
   HealthResponse,
   RuntimeConfig,
-  CmsMode,
 } from "./types";
 
 export {
@@ -45,7 +43,7 @@ export {
 } from "./auth";
 export type { LeapifyAuthClient } from "./auth";
 
-export { solvePowChallenge } from "./pow";
+export { solveTurnstileChallenge } from "./turnstile";
 export { initializeSession } from "./session";
 
 /**
@@ -116,7 +114,6 @@ import type {
   LeapifyErrorBody,
   CreateEventBody,
   CreateFaqBody,
-  SnapshotResult,
   HealthResponse,
 } from "./types";
 
@@ -489,16 +486,6 @@ export function createLeapifyClient(baseUrl: string, getToken?: GetTokenFn) {
       const formData = new FormData();
       formData.append("file", file);
       return postFormData("/api/uploads/images", formData);
-    },
-
-    // ── Content Sync ───────────────────────────────────────────────────────
-
-    /**
-     * POST /api/config/sync-content — admin only.
-     * Pushes all D1 content to Contentful. Auto-generates content types if missing.
-     */
-    syncContent(): Promise<SnapshotResult> {
-      return post<SnapshotResult>("/api/config/sync-content");
     },
 
     // ── Health ─────────────────────────────────────────────────────────────

@@ -54,8 +54,7 @@ export const events = sqliteTable(
       .notNull()
       .default(false),
 
-    // CMS
-    contentfulEntryId: text("contentful_entry_id"),
+
 
     // Audit
     createdAt: integer("created_at")

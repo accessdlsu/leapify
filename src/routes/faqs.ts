@@ -8,11 +8,9 @@ import { faqs } from '../db/schema/faqs'
 import { CacheService } from '../services/cache'
 import { authMiddleware, adminMiddleware } from '../auth/middleware'
 import { notFound } from '../lib/errors'
-import { ContentfulManagement } from '../services/contentful-management'
 
 const FAQS_KV_KEY = 'faqs:active'
 const FAQS_TTL = 600 // 10 min
-const CF_FAQ_CT = 'faq'
 
 const faqSchema = z.object({
   question: z.string().min(1),
@@ -22,37 +20,6 @@ const faqSchema = z.object({
 })
 
 export const faqsRoute = new Hono<LeapifyEnv>()
-
-/**
- * Push a single FAQ entry to Contentful in the background.
- * No-op if Contentful Management API is not configured.
- */
-async function pushFaqToContentful(env: LeapifyEnv['Bindings'], faq: typeof faqs.$inferSelect) {
-  console.log('[Contentful] pushFaqToContentful called for FAQ:', faq.id)
-  if (!ContentfulManagement.isConfigured(env.CONTENTFUL_SPACE_ID, env.CONTENTFUL_MANAGEMENT_TOKEN)) {
-    console.log('[Contentful] Skipping FAQ push — Management API not configured',
-      'SPACE_ID:', !!env.CONTENTFUL_SPACE_ID, 'MGMT_TOKEN:', !!env.CONTENTFUL_MANAGEMENT_TOKEN)
-    return
-  }
-
-  const mgmt = new ContentfulManagement(
-    env.CONTENTFUL_SPACE_ID!,
-    env.CONTENTFUL_MANAGEMENT_TOKEN!,
-    env.CONTENTFUL_ENVIRONMENT,
-  )
-
-  try {
-    await mgmt.upsertEntry(CF_FAQ_CT, faq.id, {
-      'en-US': { question: faq.question },
-      answer: { 'en-US': faq.answer },
-      category: { 'en-US': faq.category },
-      sortOrder: { 'en-US': faq.sortOrder },
-    })
-    console.log(`[Contentful] Synced FAQ ${faq.id} successfully`)
-  } catch (err) {
-    console.warn(`[Contentful] Failed to sync FAQ ${faq.id}:`, err)
-  }
-}
 
 // GET /faqs — public, KV cached 10min
 faqsRoute.get('/', async (c) => {
@@ -85,11 +52,6 @@ faqsRoute.post(
     const [created] = await db.insert(faqs).values(body).returning()
     await cache.del(FAQS_KV_KEY)
 
-    // Push to Contentful in background (non-blocking, keeps execution context alive)
-    if (c.get('cmsMode') === 'hybrid') {
-      c.executionCtx.waitUntil(pushFaqToContentful(c.env, created))
-    }
-
     return c.json({ data: created }, 201)
   },
 )
@@ -110,11 +72,6 @@ faqsRoute.patch('/:id', authMiddleware, adminMiddleware, async (c) => {
 
   if (!updated) throw notFound('FAQ')
   await cache.del(FAQS_KV_KEY)
-
-  // Push to Contentful in background (non-blocking, keeps execution context alive)
-  if (c.get('cmsMode') === 'hybrid') {
-    c.executionCtx.waitUntil(pushFaqToContentful(c.env, updated))
-  }
 
   return c.json({ data: updated })
 })

@@ -3,9 +3,7 @@ import type { LeapifyEnv, SiteConfigKey, SiteConfigMap } from "../types";
 import { createDb } from "../db";
 import { siteConfig } from "../db/schema/site-config";
 import { authMiddleware, adminMiddleware } from "../auth/middleware";
-import { ContentfulManagement } from "../services/contentful-management";
-import { ensureContentTypes, pushToContentful } from "../services/snapshot";
-import { serviceUnavailable, conflict } from "../lib/errors";
+import { forbidden } from "../lib/errors";
 
 export const siteConfigRoute = new Hono<LeapifyEnv>();
 
@@ -25,18 +23,23 @@ siteConfigRoute.get("/", async (c) => {
       siteName: config.site_name ?? null,
       registrationGloballyOpen: config.registration_globally_open ?? true,
       maintenanceMode: config.maintenance_mode ?? false,
-      // Prefer the D1-persisted value over the env-var default so that
-      // PATCH /config/cms_mode changes are reflected immediately.
-      cmsMode: config.cms_mode ?? c.get('cmsMode'),
+      allowedOrigins: config.allowed_origins ?? null,
       now: Math.floor(Date.now() / 1000),
     },
   });
 });
 
-// PATCH /config/:key — admin only
+// PATCH /config/:key — admin only (allowed_origins is super_admin only)
 siteConfigRoute.patch("/:key", authMiddleware, adminMiddleware, async (c) => {
   const key = c.req.param("key") as SiteConfigKey;
   const { value } = await c.req.json<{ value: SiteConfigMap[typeof key] }>();
+
+  if (key === "allowed_origins") {
+    const user = c.get("user");
+    if (!user || user.role !== "super_admin") {
+      throw forbidden("Super Admin access required to change allowed origins");
+    }
+  }
 
   const db = createDb(c.env.DB);
   const now = Math.floor(Date.now() / 1000);
@@ -49,7 +52,7 @@ siteConfigRoute.patch("/:key", authMiddleware, adminMiddleware, async (c) => {
       set: { value: JSON.stringify(value), updatedAt: now },
     });
 
-  // Write-through to KV so the maintenance-mode middleware can read it
+  // Write-through to KV so the maintenance-mode / CORS middlewares can read it
   // without a D1 round-trip on every request. TTL 10 min — admin must
   // wait at most 10 min for changes to fully propagate across all edges.
   await c.env.KV.put(`config:${key}`, JSON.stringify(value), {
@@ -57,49 +60,4 @@ siteConfigRoute.patch("/:key", authMiddleware, adminMiddleware, async (c) => {
   });
 
   return c.json({ data: { key, value } });
-});
-
-// POST /config/sync-content — admin only
-// Auto-generates content types in Contentful if missing, then pushes all D1 content.
-// Uses a KV lock to prevent concurrent syncs.
-const SYNC_LOCK_KEY = 'contentful:sync:lock'
-const SYNC_LOCK_TTL = 60 // seconds
-
-siteConfigRoute.post("/sync-content", authMiddleware, adminMiddleware, async (c) => {
-  const cmsMode = c.get('cmsMode')
-  if (cmsMode === 'cloudflare') {
-    throw serviceUnavailable('Contentful sync is not available in Cloudflare-only mode.')
-  }
-
-  if (!ContentfulManagement.isConfigured(c.env.CONTENTFUL_SPACE_ID, c.env.CONTENTFUL_MANAGEMENT_TOKEN)) {
-    throw serviceUnavailable('Contentful Management API credentials not configured.')
-  }
-
-  // Idempotency guard: prevent concurrent syncs
-  const existingLock = await c.env.KV.get(SYNC_LOCK_KEY)
-  if (existingLock) {
-    throw conflict('A sync is already in progress. Please wait and try again.')
-  }
-  await c.env.KV.put(SYNC_LOCK_KEY, '1', { expirationTtl: SYNC_LOCK_TTL })
-
-  try {
-    const mgmt = new ContentfulManagement(
-      c.env.CONTENTFUL_SPACE_ID!,
-      c.env.CONTENTFUL_MANAGEMENT_TOKEN!,
-      c.env.CONTENTFUL_ENVIRONMENT,
-    )
-
-    const db = createDb(c.env.DB)
-
-    // Auto-generate content types if they don't exist
-    await ensureContentTypes(mgmt, {})
-
-    // Push all D1 content to Contentful (skip unchanged entities)
-    const result = await pushToContentful(db, mgmt, {}, c.env.KV)
-
-    return c.json({ data: result })
-  } finally {
-    // Release lock
-    await c.env.KV.delete(SYNC_LOCK_KEY)
-  }
 });

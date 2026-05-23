@@ -25,10 +25,10 @@
       "import": "./dist/client/types.js",
       "require": "./dist/client/types.cjs"
     },
-    "./middleware/pow-challenge": {
-      "types": "./dist/lib/middleware/pow-challenge.d.ts",
-      "import": "./dist/lib/middleware/pow-challenge.js",
-      "require": "./dist/lib/middleware/pow-challenge.cjs"
+    "./middleware/turnstile-challenge": {
+      "types": "./dist/lib/middleware/turnstile-challenge.d.ts",
+      "import": "./dist/lib/middleware/turnstile-challenge.js",
+      "require": "./dist/lib/middleware/turnstile-challenge.cjs"
     }
   },
   "files": [
@@ -36,7 +36,7 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "build": "npx tsup src/index.ts src/client/index.ts src/client/types.ts src/lib/middleware/pow-challenge.ts --format esm,cjs --outDir dist --target es2022 --splitting --sourcemap false --no-dts --no-clean --external @opentelemetry/api && npx tsup src/worker.ts --format esm --outDir dist --target es2022 --no-splitting --sourcemap false --no-dts --no-clean --external @opentelemetry/api && tsc -p tsconfig.build.json --emitDeclarationOnly --declaration --declarationDir dist",
+    "build": "npx tsup src/index.ts src/client/index.ts src/client/types.ts src/lib/middleware/turnstile-challenge.ts --format esm,cjs --outDir dist --target es2022 --splitting --sourcemap false --no-dts --no-clean --external @opentelemetry/api && npx tsup src/worker.ts --format esm --outDir dist --target es2022 --no-splitting --sourcemap false --no-dts --no-clean --external @opentelemetry/api && tsc -p tsconfig.build.json --emitDeclarationOnly --declaration --declarationDir dist",
     "dev": "tsup --watch",
     "start": "npm run build && wrangler dev",
     "deploy": "npm run build && wrangler deploy",
@@ -104,8 +104,11 @@
       "INTERNAL_API_SECRET": {
         "description": "Secret key for internal API routes. Also used as HMAC signing key for PoW challenge cookies."
       },
-      "POW_DIFFICULTY": {
-        "description": "Proof-of-work challenge difficulty (leading zero bits). Default: 4. Range: 1-8. Higher = harder challenge."
+      "TURNSTILE_SITE_KEY": {
+        "description": "Cloudflare Turnstile site key (public)."
+      },
+      "TURNSTILE_SECRET_KEY": {
+        "description": "Cloudflare Turnstile secret key (sensitive)."
       }
     }
   },
@@ -122,7 +125,6 @@
   "dependencies": {
     "@hono/zod-validator": "^0.7.6",
     "better-auth": "^1.6.9",
-    "contentful-management": "^12.3.2",
     "wrangler": "^4.80.0",
     "zod": "^4.3.6"
   },

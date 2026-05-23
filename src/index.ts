@@ -33,7 +33,6 @@ import { createQueueHandler } from "./queues/handlers";
 import { batchRelease } from "./cron/batch-release";
 import { reconcileSlots } from "./cron/reconcile-slots";
 import { reminderEmails } from "./cron/reminder-emails";
-import { lifecycleCheck } from "./cron/lifecycle-check";
 import { renewWatches } from "./cron/renew-watches";
 import { ensureDatabase } from "./db/migrate";
 import type { LeapifyBindings } from "./types";
@@ -115,9 +114,7 @@ export function createLeapify(options: LeapifyOptions = {}) {
       if (cron === "* * * * *") await batchRelease(env);
       if (cron === "*/5 * * * *") await reconcileSlots(env);
       if (cron === "0 * * * *") {
-        ctx.waitUntil(
-          Promise.all([reminderEmails(env), lifecycleCheck(env, ctx)]),
-        );
+        ctx.waitUntil(reminderEmails(env));
       }
       if (cron === "0 0 * * *") await renewWatches(env);
     },
@@ -142,17 +139,13 @@ export { createQueueHandler } from "./queues/handlers";
 export { createDb } from "./db";
 export { ensureDatabase } from "./db/migrate";
 export { createWorkerHandler, type CreateWorkerHandlerOptions } from "./worker-handler";
-export { ContentfulManagement } from "./services/contentful-management";
-export { ensureContentTypes } from "./services/snapshot";
 
 export type {
   LeapifyBindings,
   LeapifyEnv,
   SiteConfigKey,
   SiteConfigMap,
-  CmsMode,
 } from "./types";
-export { parseCmsMode, shouldPushToContentful, shouldPullFromContentful } from "./types";
 export type { LeapifyUser } from "./auth/types";
 export type { LeapifyDb } from "./db";
 export type { LeapifyJob } from "./queues/jobs";
@@ -165,16 +158,18 @@ export type { SlotInfo } from "./services/slots";
 export interface RuntimeConfig {
   production: boolean;
   leapifyApiUrl: string;
+  turnstileSiteKey?: string;
 }
 
 /**
  * Build the runtime config from Worker bindings.
  * Used by createWorkerHandler() and standalone workers.
  */
-export function getRuntimeConfig(_env: LeapifyBindings): RuntimeConfig {
+export function getRuntimeConfig(env: LeapifyBindings): RuntimeConfig {
   return {
     production: true,
     leapifyApiUrl: "",
+    ...(env.TURNSTILE_SITE_KEY ? { turnstileSiteKey: env.TURNSTILE_SITE_KEY } : {}),
   };
 }
 

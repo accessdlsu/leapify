@@ -2,7 +2,6 @@ import { Hono } from 'hono'
 import type { LeapifyEnv } from '../types'
 import { authMiddleware, adminMiddleware } from '../auth/middleware'
 import { badRequest, serviceUnavailable, notFound } from '../lib/errors'
-import { ContentfulManagement } from '../services/contentful-management'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -126,63 +125,6 @@ uploadsRoute.post(
       },
       201,
     )
-  },
-)
-
-/**
- * POST /uploads/contentful — admin only
- *
- * Uploads a file directly to Contentful as a published Asset.
- * Returns the Contentful asset sys.id and CDN URL.
- */
-uploadsRoute.post(
-  '/contentful',
-  authMiddleware,
-  adminMiddleware,
-  async (c) => {
-    if (!ContentfulManagement.isConfigured(c.env.CONTENTFUL_SPACE_ID, c.env.CONTENTFUL_MANAGEMENT_TOKEN)) {
-      throw serviceUnavailable('Contentful Management API credentials not configured.')
-    }
-
-    let formData: FormData
-    try {
-      formData = await c.req.formData()
-    } catch {
-      throw badRequest('Request body must be multipart/form-data.')
-    }
-
-    const file = formData.get('file')
-    if (!(file instanceof File)) {
-      throw badRequest('A "file" field is required.')
-    }
-
-    const contentType = file.type || 'application/octet-stream'
-    if (!ALLOWED_MIME_TYPES.has(contentType)) {
-      throw badRequest(`Unsupported file type "${contentType}".`)
-    }
-
-    if (file.size > MAX_FILE_SIZE) {
-      throw badRequest('File exceeds 10MB limit.')
-    }
-
-    const mgmt = new ContentfulManagement(
-      c.env.CONTENTFUL_SPACE_ID!,
-      c.env.CONTENTFUL_MANAGEMENT_TOKEN!,
-      c.env.CONTENTFUL_ENVIRONMENT,
-    )
-
-    const arrayBuffer = await file.arrayBuffer()
-    const uploadId = await mgmt.uploadFile(file.name, arrayBuffer, contentType)
-    const asset = await mgmt.createAssetFromUpload(uploadId, file.name, file.name, contentType)
-
-    return c.json({
-      data: {
-        assetId: asset.id,
-        url: asset.url,
-        size: file.size,
-        contentType,
-      },
-    }, 201)
   },
 )
 

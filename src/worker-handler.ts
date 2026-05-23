@@ -35,7 +35,6 @@ const API_PREFIXES = [
   "/api/themes",
   "/api/config",
   "/api/uploads",
-  "/api/contentful",
   "/health",
   "/internal/",
   "/.well-known/",
@@ -48,6 +47,7 @@ function isApiPath(pathname: string): boolean {
 export interface RuntimeConfig {
   production: boolean;
   leapifyApiUrl: string;
+  turnstileSiteKey?: string;
 }
 
 export interface CreateWorkerHandlerOptions {
@@ -81,10 +81,11 @@ export interface CreateWorkerHandlerOptions {
   getRuntimeConfig?: (env: LeapifyBindings) => RuntimeConfig;
 }
 
-function defaultGetRuntimeConfig(_env: LeapifyBindings): RuntimeConfig {
+function defaultGetRuntimeConfig(env: LeapifyBindings): RuntimeConfig {
   return {
     production: true,
     leapifyApiUrl: "",
+    ...(env.TURNSTILE_SITE_KEY ? { turnstileSiteKey: env.TURNSTILE_SITE_KEY } : {}),
   };
 }
 

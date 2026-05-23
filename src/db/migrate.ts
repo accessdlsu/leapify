@@ -150,7 +150,6 @@ const CREATE_STATEMENTS = [
     "release_at" integer,
     "reminder_24h_sent" integer DEFAULT false NOT NULL,
     "reminder_1h_sent" integer DEFAULT false NOT NULL,
-    "contentful_entry_id" text,
     "created_at" integer DEFAULT (unixepoch()) NOT NULL,
     "published_at" integer,
     FOREIGN KEY ("theme_id") REFERENCES "themes"("id") ON UPDATE no action ON DELETE set null,

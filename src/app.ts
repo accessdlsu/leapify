@@ -1,14 +1,13 @@
 import { Hono } from 'hono'
 import type { LeapifyEnv } from './types'
 import { errorHandler } from './lib/middleware/error-handler'
-import { parseCmsMode } from './types'
 import { createCorsMiddleware } from './lib/middleware/cors'
 import { createRefererGuard } from './lib/middleware/referer-guard'
 import {
-  createPowChallengeMiddleware,
-  handlePowVerify,
-  POW_VERIFY_PATH,
-} from './lib/middleware/pow-challenge'
+  createTurnstileMiddleware,
+  handleTurnstileVerify,
+  TURNSTILE_VERIFY_PATH,
+} from './lib/middleware/turnstile-challenge'
 import { serviceUnavailable } from './lib/errors'
 import { createAuth } from './auth/auth'
 import { healthRoute } from './routes/health'
@@ -20,7 +19,6 @@ import { gformsWebhookRoute } from './routes/internal/gforms-webhook'
 import { uploadsRoute } from './routes/uploads'
 import { themesRoute } from './routes/themes'
 import { organizationsRoute } from './routes/organizations'
-import { contentfulSyncRoute } from './routes/contentful-sync'
 
 export interface LeapifyAppOptions {
   allowedOrigins?: string[]
@@ -48,17 +46,8 @@ export function createApp(options: LeapifyAppOptions = {}): Hono<LeapifyEnv> {
 
   // Global middleware
   app.use('*', createCorsMiddleware(options.allowedOrigins ?? ['*']))
-  app.use('*', createPowChallengeMiddleware())
+  app.use('*', createTurnstileMiddleware())
   app.use('*', createRefererGuard(options.allowedOrigins ?? ['*']))
-
-  // Expose CMS mode to all routes
-  app.use('*', async (c, next) => {
-    // Check KV for a runtime override (set via PATCH /api/config/cms_mode)
-    const overrideRaw = await c.env.KV.get('config:cms_mode').catch(() => null)
-    const override = overrideRaw ? JSON.parse(overrideRaw) : null
-    c.set('cmsMode', parseCmsMode(override ?? c.env.CMS_MODE))
-    return next()
-  })
 
   // Better Auth HTTP handler — OAuth redirects, callbacks, session, token endpoints.
   // Mounted BEFORE the maintenance check so auth is always reachable.
@@ -105,7 +94,7 @@ export function createApp(options: LeapifyAppOptions = {}): Hono<LeapifyEnv> {
   })
 
   // Routes
-  app.post(POW_VERIFY_PATH, handlePowVerify)
+  app.post(TURNSTILE_VERIFY_PATH, handleTurnstileVerify)
   app.route('/health', healthRoute)
   app.route('/api/config', siteConfigRoute)
   app.route('/api/classes', classesRoute)
@@ -114,7 +103,6 @@ export function createApp(options: LeapifyAppOptions = {}): Hono<LeapifyEnv> {
   app.route('/api/organizations', organizationsRoute)
   app.route('/api/faqs', faqsRoute)
   app.route('/api/uploads', uploadsRoute)
-  app.route('/api/contentful', contentfulSyncRoute)
   app.route('/internal/gforms-webhook', gformsWebhookRoute)
 
   // Error handler
