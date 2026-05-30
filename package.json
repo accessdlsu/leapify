@@ -1,6 +1,6 @@
 {
   "name": "@access-dlsu/leapify",
-  "version": "0.260524.3",
+  "version": "0.260531.1",
   "description": "DLSU CSO LEAP backend (run as a standalone Cloudflare Worker or install as an npm module)",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -124,7 +124,7 @@
   },
   "dependencies": {
     "@hono/zod-validator": "^0.7.6",
-    "better-auth": "^1.6.9",
+    "better-auth": "^1.6.9 <1.6.12 || ^1.7",
     "wrangler": "^4.80.0",
     "zod": "^4.3.6"
   },
