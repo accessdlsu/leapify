@@ -69,7 +69,7 @@ export function createTestApp(options?: { allowedOrigins?: string[] }) {
     DB: {} as any, // injected via vi.mock('../../src/db') per test file
     KV: kv as any,
     QUEUE: createMockQueue() as any,
-    RESEND_API_KEY: "test-resend-key",
+    RESEND_API_KEY: "",
     BETTER_AUTH_SECRET: "test-secret-do-not-use-in-production",
     BETTER_AUTH_URL: "http://localhost:8787",
     GOOGLE_CLIENT_ID: "test-google-client-id",

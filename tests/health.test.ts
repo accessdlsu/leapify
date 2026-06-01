@@ -8,5 +8,5 @@ test('API-HEALTH-001: Health check endpoint', async () => {
   const res = await app.request('/health', { method: 'GET' }, env)
   expect(res.status).toBe(200)
   const body = await res.json()
-  expect(body).toMatchObject({ status: 'ok' })
+  expect(body).toMatchObject({ data: { status: 'OK' } })
 })

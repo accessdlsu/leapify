@@ -40,6 +40,9 @@ build/Release
 # Dependency directories
 node_modules/
 jspm_packages/
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
 
 # Snowpack dependency directory (https://snowpack.dev/)
 web_modules/
@@ -143,9 +146,6 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
-
-# Package Lock (Shouldn't Be on Repository)
-package-lock.json
 
 # Claude / Qwen
 .claude/settings*

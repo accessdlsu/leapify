@@ -29,8 +29,8 @@ describe('Site Config API', () => {
     })
   })
 
-  test('API-CONFIG-001: GET /config returns structured config with defaults', async () => {
-    const res = await app.request('/config', { method: 'GET' }, env)
+  test('API-CONFIG-001: GET /api/config returns structured config with defaults', async () => {
+    const res = await app.request('/api/config', { method: 'GET' }, env)
     expect(res.status).toBe(200)
     const body = await res.json() as any
     expect(body.data.comingSoonUntil).toBe(1700000000)
@@ -41,7 +41,7 @@ describe('Site Config API', () => {
   })
 
   test('API-CONFIG-002: Admin can update a config key (upsert)', async () => {
-    const res = await app.request('/config/site_ends_at', {
+    const res = await app.request('/api/config/site_ends_at', {
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${adminToken}`,
@@ -54,13 +54,13 @@ describe('Site Config API', () => {
     expect(body.data.key).toBe('site_ends_at')
     expect(body.data.value).toBe(1800000000)
 
-    const checkRes = await app.request('/config', { method: 'GET' }, env)
+    const checkRes = await app.request('/api/config', { method: 'GET' }, env)
     const checkBody = await checkRes.json() as any
     expect(checkBody.data.siteEndsAt).toBe(1800000000)
   })
 
   test('API-CONFIG-003: Guest cannot update config — returns 401', async () => {
-    const res = await app.request('/config/site_ends_at', {
+    const res = await app.request('/api/config/site_ends_at', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ value: 1 }),

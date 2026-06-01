@@ -172,7 +172,15 @@ healthRoute.get('/', async (c) => {
 
   const hasSes = Boolean(env.SES_REGION) && Boolean(env.SES_ACCESS_KEY_ID) && Boolean(env.SES_SECRET_ACCESS_KEY)
   const hasResend = Boolean(env.RESEND_API_KEY)
-  const hasGForms = Boolean(env.GFORMS_SERVICE_ACCOUNT_JSON)
+  let hasGForms = false
+  if (env.GFORMS_SERVICE_ACCOUNT_JSON) {
+    try {
+      const parsed = JSON.parse(env.GFORMS_SERVICE_ACCOUNT_JSON)
+      hasGForms = Boolean(parsed.client_email && parsed.private_key)
+    } catch {
+      /* invalid JSON — not configured */
+    }
+  }
 
   const probes: Promise<[string, ServiceHealth]>[] = []
 

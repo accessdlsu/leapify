@@ -2,7 +2,7 @@ import { test, expect, describe, beforeEach } from 'vitest'
 import { createTestApp } from './helpers/app'
 import { resetTestDb, getTestDb } from './helpers/setup'
 import { makeTestSession } from './helpers/auth'
-import { seedEvent, seedUser } from './helpers/seed'
+import { seedEvent, seedUser, seedTheme } from './helpers/seed'
 
 describe('Events API', () => {
   let app: ReturnType<typeof createTestApp>['app']
@@ -35,7 +35,7 @@ describe('Events API', () => {
   })
 
   test('API-EVENTS-001: List published events returns only published', async () => {
-    const res = await app.request('/events', { method: 'GET' }, env)
+    const res = await app.request('/api/classes', { method: 'GET' }, env)
     expect(res.status).toBe(200)
     expect(res.headers.get('Cache-Control')).toContain('max-age=604800')
     expect(res.headers.get('ETag')).not.toBeNull()
@@ -45,10 +45,10 @@ describe('Events API', () => {
   })
 
   test('API-EVENTS-002: 304 on ETag match', async () => {
-    const first = await app.request('/events', { method: 'GET' }, env)
+    const first = await app.request('/api/classes', { method: 'GET' }, env)
     const etag = first.headers.get('ETag')!
 
-    const second = await app.request('/events', {
+    const second = await app.request('/api/classes', {
       method: 'GET',
       headers: { 'If-None-Match': etag },
     }, env)
@@ -56,26 +56,26 @@ describe('Events API', () => {
   })
 
   test('API-EVENTS-003: Draft event slug returns 404', async () => {
-    const res = await app.request('/events/draft-event', { method: 'GET' }, env)
+    const res = await app.request('/api/classes/draft-event', { method: 'GET' }, env)
     const text = await res.text()
     console.log('API-EVENTS-003 RESPONSE HTML:', text)
     expect(res.status).toBe(404)
   })
 
   test('API-EVENTS-004: Get published event by slug', async () => {
-    const res = await app.request('/events/published-event', { method: 'GET' }, env)
+    const res = await app.request('/api/classes/published-event', { method: 'GET' }, env)
     expect(res.status).toBe(200)
     const body = await res.json() as any
     expect(body.data.slug).toBe('published-event')
   })
 
   test('API-EVENTS-005: Non-existent slug returns 404', async () => {
-    const res = await app.request('/events/does-not-exist', { method: 'GET' }, env)
+    const res = await app.request('/api/classes/does-not-exist', { method: 'GET' }, env)
     expect(res.status).toBe(404)
   })
 
   test('API-EVENTS-006: Slots endpoint with Cache-Control header', async () => {
-    const res = await app.request('/events/published-event/slots', { method: 'GET' }, env)
+    const res = await app.request('/api/classes/published-event/slots', { method: 'GET' }, env)
     expect(res.status).toBe(200)
     expect(res.headers.get('Cache-Control')).toBe('public, max-age=5, stale-while-revalidate=5')
     const body = await res.json() as any
@@ -84,12 +84,14 @@ describe('Events API', () => {
   })
 
   test('API-EVENTS-007: Slots for non-existent event returns 404', async () => {
-    const res = await app.request('/events/ghost/slots', { method: 'GET' }, env)
+    const res = await app.request('/api/classes/ghost/slots', { method: 'GET' }, env)
     expect(res.status).toBe(404)
   })
 
   test('API-EVENTS-008: Admin can create an event', async () => {
-    const res = await app.request('/events', {
+    const db = getTestDb()
+    const theme = await seedTheme(db)
+    const res = await app.request('/api/classes', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${adminToken}`,
@@ -97,9 +99,8 @@ describe('Events API', () => {
       },
       body: JSON.stringify({
         slug: 'brand-new-event',
-        categoryName: 'ACM',
-        categoryPath: '/acm',
         title: 'Brand New Event',
+        themeId: theme.id,
       }),
     }, env)
     expect(res.status).toBe(201)
@@ -108,19 +109,19 @@ describe('Events API', () => {
   })
 
   test('API-EVENTS-009: Missing required fields returns 400', async () => {
-    const res = await app.request('/events', {
+    const res = await app.request('/api/classes', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${adminToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ categoryName: 'ACM' }),
+      body: JSON.stringify({ title: 'ACM Event' }),
     }, env)
     expect(res.status).toBe(400)
   })
 
   test('API-EVENTS-010: Admin can update an event', async () => {
-    const res = await app.request('/events/published-event', {
+    const res = await app.request('/api/classes/published-event', {
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${adminToken}`,
@@ -134,7 +135,7 @@ describe('Events API', () => {
   })
 
   test('API-EVENTS-011: PATCH non-existent event returns 404', async () => {
-    const res = await app.request('/events/ghost-event', {
+    const res = await app.request('/api/classes/ghost-event', {
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${adminToken}`,
@@ -146,22 +147,22 @@ describe('Events API', () => {
   })
 
   test('API-EDGE-AUTH-001: Guest on protected route returns 401', async () => {
-    const res = await app.request('/events', {
+    const res = await app.request('/api/classes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ slug: 'x', categoryName: 'X', categoryPath: '/x', title: 'X' }),
+      body: JSON.stringify({ slug: 'x', title: 'X' }),
     }, env)
     expect(res.status).toBe(401)
   })
 
   test('API-EDGE-AUTH-002: Student token on admin route returns 403', async () => {
-    const res = await app.request('/events', {
+    const res = await app.request('/api/classes', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${userToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ slug: 'x', categoryName: 'X', categoryPath: '/x', title: 'X' }),
+      body: JSON.stringify({ slug: 'x', title: 'X' }),
     }, env)
     expect(res.status).toBe(403)
   })

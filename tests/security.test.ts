@@ -14,7 +14,7 @@ describe('Security Boundaries (CORS, Roles, Domains)', () => {
     const { app, env } = createTestApp({ allowedOrigins: ['https://dlsu-cso.com'] })
 
     test('SEC-CORS-001: Blocks malicious Cross-Origin request', async () => {
-      const res = await app.request('/events/some-event/slots', {
+      const res = await app.request('/api/classes/some-event/slots', {
         method: 'GET',
         headers: { 'Origin': 'https://evil-hacker.com' },
       }, env)
@@ -25,7 +25,7 @@ describe('Security Boundaries (CORS, Roles, Domains)', () => {
     })
 
     test('SEC-CORS-002: Allows valid Cross-Origin request', async () => {
-      const res = await app.request('/events', {
+      const res = await app.request('/api/classes', {
         method: 'GET',
         headers: { 'Origin': 'https://dlsu-cso.com' },
       }, env)
@@ -43,7 +43,7 @@ describe('Security Boundaries (CORS, Roles, Domains)', () => {
       
       expect(res.status).toBe(200)
       const body = await res.json() as any
-      expect(body.status).toBe('ok')
+      expect(body.data.status).toBe('OK')
     })
   })
 
@@ -60,7 +60,7 @@ describe('Security Boundaries (CORS, Roles, Domains)', () => {
       const studentToken = await makeTestSession(db, kv, 'student-guy', 'student', studentUser.id)
 
       // A student tries to perform an admin capability: modifying Site Configurations
-      const res = await app.request('/config/maintenance_mode', {
+      const res = await app.request('/api/config/maintenance_mode', {
         method: 'PATCH',
         headers: { 
           'Authorization': `Bearer ${studentToken}`,
@@ -84,7 +84,7 @@ describe('Security Boundaries (CORS, Roles, Domains)', () => {
       })
       const adminToken = await makeTestSession(db, kv, 'admin-guy', 'admin', adminUser.id)
 
-      const res = await app.request('/config/maintenance_mode', {
+      const res = await app.request('/api/config/maintenance_mode', {
         method: 'PATCH',
         headers: { 
           'Authorization': `Bearer ${adminToken}`,
