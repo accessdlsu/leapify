@@ -67,6 +67,10 @@ export function createRefererGuard(allowedOrigins: string[]) {
 
     const referer = c.req.header('referer') ?? ''
 
+    // Same-origin requests (console calling its own worker) are always allowed
+    const requestOrigin = new URL(c.req.url).origin
+    if (referer.startsWith(requestOrigin)) return next()
+
     const isAllowed = currentAllowedOrigins.some((origin) =>
       referer.startsWith(origin)
     )

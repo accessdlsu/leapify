@@ -11,38 +11,52 @@ describe('Security Boundaries (CORS, Roles, Domains)', () => {
 
   describe('CORS Enforcement (ADR-001)', () => {
     // Spin up an app specifically configured to ONLY allow DLSU domains
-    const { app, env } = createTestApp({ allowedOrigins: ['https://dlsu-cso.com'] })
+    const { app, env } = createTestApp({
+      allowedOrigins: ['https://dlsu-cso.com']
+    })
 
     test('SEC-CORS-001: Blocks malicious Cross-Origin request', async () => {
-      const res = await app.request('/api/classes/some-event/slots', {
-        method: 'GET',
-        headers: { 'Origin': 'https://evil-hacker.com' },
-      }, env)
-      
+      const res = await app.request(
+        '/api/classes/some-event/slots',
+        {
+          method: 'GET',
+          headers: { Origin: 'https://evil-hacker.com' }
+        },
+        env
+      )
+
       expect(res.status).toBe(403)
-      const body = await res.json() as any
+      const body = (await res.json()) as any
       expect(body.error.code).toBe('DOMAIN_RESTRICTED')
     })
 
     test('SEC-CORS-002: Allows valid Cross-Origin request', async () => {
-      const res = await app.request('/api/classes', {
-        method: 'GET',
-        headers: { 'Origin': 'https://dlsu-cso.com' },
-      }, env)
-      
+      const res = await app.request(
+        '/api/classes',
+        {
+          method: 'GET',
+          headers: { Origin: 'https://dlsu-cso.com' }
+        },
+        env
+      )
+
       // We expect a 200 (or at least anything not 403)
       expect(res.status).toBe(200)
     })
 
     test('SEC-CORS-003: Publicly exposes /health even to malicious origins', async () => {
       // The health route MUST completely bypass CORS restrictions for uptime monitors
-      const res = await app.request('/health', {
-        method: 'GET',
-        headers: { 'Origin': 'https://random-uptime-bot.com' },
-      }, env)
-      
+      const res = await app.request(
+        '/health',
+        {
+          method: 'GET',
+          headers: { Origin: 'https://random-uptime-bot.com' }
+        },
+        env
+      )
+
       expect(res.status).toBe(200)
-      const body = await res.json() as any
+      const body = (await res.json()) as any
       expect(body.data.status).toBe('OK')
     })
   })
@@ -55,23 +69,33 @@ describe('Security Boundaries (CORS, Roles, Domains)', () => {
       const studentUser = await seedUser(db, {
         betterAuthId: 'student-guy',
         email: 'student@dlsu.edu.ph',
-        role: 'student',
+        role: 'student'
       })
-      const studentToken = await makeTestSession(db, kv, 'student-guy', 'student', studentUser.id)
+      const studentToken = await makeTestSession(
+        db,
+        kv,
+        'student-guy',
+        'student',
+        studentUser.id
+      )
 
       // A student tries to perform an admin capability: modifying Site Configurations
-      const res = await app.request('/api/config/maintenance_mode', {
-        method: 'PATCH',
-        headers: { 
-          'Authorization': `Bearer ${studentToken}`,
-          'Content-Type': 'application/json' 
+      const res = await app.request(
+        '/api/config/maintenance_mode',
+        {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${studentToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ value: true })
         },
-        body: JSON.stringify({ value: true }),
-      }, env)
+        env
+      )
 
       // MUST strictly enforce 403 Forbidden!
       expect(res.status).toBe(403)
-      const body = await res.json() as any
+      const body = (await res.json()) as any
       expect(body.error.code).toBe('FORBIDDEN')
     })
 
@@ -80,21 +104,75 @@ describe('Security Boundaries (CORS, Roles, Domains)', () => {
       const adminUser = await seedUser(db, {
         betterAuthId: 'admin-guy',
         email: 'admin@dlsu.edu.ph',
-        role: 'admin',
+        role: 'admin'
       })
-      const adminToken = await makeTestSession(db, kv, 'admin-guy', 'admin', adminUser.id)
+      const adminToken = await makeTestSession(
+        db,
+        kv,
+        'admin-guy',
+        'admin',
+        adminUser.id
+      )
 
-      const res = await app.request('/api/config/maintenance_mode', {
-        method: 'PATCH',
-        headers: { 
-          'Authorization': `Bearer ${adminToken}`,
-          'Content-Type': 'application/json' 
+      const res = await app.request(
+        '/api/config/maintenance_mode',
+        {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${adminToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ value: true })
         },
-        body: JSON.stringify({ value: true }),
-      }, env)
+        env
+      )
 
       // 200 OK — they passed the admin guard!
       expect(res.status).toBe(200)
+    })
+  })
+
+  describe('Same-Origin Bypass', () => {
+    test('SEC-SAME-001: Same-origin PATCH to /api/config bypasses CORS', async () => {
+      const { app, env } = createTestApp({
+        allowedOrigins: ['https://trusted.com']
+      })
+      // Origin matches the request URL origin — CORS should not block (auth may reject, but not CORS)
+      const res = await app.request(
+        'http://localhost/api/config/allowed_origins',
+        {
+          method: 'PATCH',
+          headers: {
+            Origin: 'http://localhost',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ value: ['https://trusted.com'] })
+        },
+        env
+      )
+      const body = (await res.json()) as any
+      // Auth rejects (no valid token), but CORS does NOT return DOMAIN_RESTRICTED
+      expect(body.error?.code).not.toBe('DOMAIN_RESTRICTED')
+    })
+
+    test('SEC-SAME-002: Cross-origin PATCH to /api/config is still blocked', async () => {
+      const { app, env } = createTestApp({
+        allowedOrigins: ['https://trusted.com']
+      })
+      const res = await app.request(
+        'http://localhost/api/config/allowed_origins',
+        {
+          method: 'PATCH',
+          headers: {
+            Origin: 'https://evil.com',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ value: ['https://evil.com'] })
+        },
+        env
+      )
+      const body = (await res.json()) as any
+      expect(body.error?.code).toBe('DOMAIN_RESTRICTED')
     })
   })
 })

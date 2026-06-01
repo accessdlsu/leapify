@@ -61,7 +61,8 @@ export function createCorsMiddleware(
       !c.req.path.startsWith('/internal') &&
       origin &&
       !currentAllowedOrigins.includes('*') &&
-      !currentAllowedOrigins.includes(origin)
+      !currentAllowedOrigins.includes(origin) &&
+      origin !== new URL(c.req.url).origin
     ) {
       return c.json(
         {
