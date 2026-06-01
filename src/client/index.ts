@@ -281,6 +281,14 @@ export function createLeapifyClient(baseUrl: string, getToken?: GetTokenFn) {
     },
 
     /**
+     * POST /api/classes/:slug/reconcile — admin only.
+     * Corrects slot count for a single event by fetching the real Google Forms response count.
+     */
+    reconcileEvent(slug: string): Promise<{ registeredSlots: number }> {
+      return post<{ registeredSlots: number }>(`/api/classes/${encodeURIComponent(slug)}/reconcile`);
+    },
+
+    /**
      * POST /api/classes — admin only.
      * Creates a new class. Auto-generates slug from title.
      */

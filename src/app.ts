@@ -16,6 +16,10 @@ import { usersRoute } from './routes/users'
 import { siteConfigRoute } from './routes/site-config'
 import { faqsRoute } from './routes/faqs'
 import { gformsWebhookRoute } from './routes/internal/gforms-webhook'
+import { reconcileSlotsRoute } from './routes/internal/reconcile-slots'
+import { batchReleaseRoute } from './routes/internal/batch-release'
+import { reminderEmailsRoute } from './routes/internal/reminder-emails'
+import { renewWatchesRoute } from './routes/internal/renew-watches'
 import { uploadsRoute } from './routes/uploads'
 import { themesRoute } from './routes/themes'
 import { organizationsRoute } from './routes/organizations'
@@ -104,6 +108,10 @@ export function createApp(options: LeapifyAppOptions = {}): Hono<LeapifyEnv> {
   app.route('/api/faqs', faqsRoute)
   app.route('/api/uploads', uploadsRoute)
   app.route('/internal/gforms-webhook', gformsWebhookRoute)
+  app.route('/internal/reconcile-slots', reconcileSlotsRoute)
+  app.route('/internal/batch-release', batchReleaseRoute)
+  app.route('/internal/reminder-emails', reminderEmailsRoute)
+  app.route('/internal/renew-watches', renewWatchesRoute)
 
   // Error handler
   app.onError(errorHandler)

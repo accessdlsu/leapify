@@ -204,6 +204,31 @@ classesRoute.get('/:slug/slots', eventsSlotsRateLimit, async (c) => {
   return c.json({ data: info })
 })
 
+// POST /events/:slug/reconcile — admin only, corrects slot count for one event
+classesRoute.post('/:slug/reconcile', authMiddleware, adminMiddleware, async (c) => {
+  const { slug } = c.req.param()
+  const db = createDb(c.env.DB)
+  const cache = new CacheService(c.env.KV)
+  const gforms = new GFormsService(c.env.GFORMS_SERVICE_ACCOUNT_JSON)
+  const slots = new SlotsService(db, cache)
+
+  const event = await db.query.events.findFirst({
+    where: eq(events.slug, slug),
+    columns: { gformsId: true },
+  })
+  if (!event) throw notFound('Event')
+  if (!event.gformsId) return c.json({ error: 'No gformsId set for this event' }, 400)
+
+  try {
+    const googleCount = await gforms.getExactResponseCount(event.gformsId)
+    await slots.correctCount(slug, googleCount)
+    return c.json({ data: { registeredSlots: googleCount } })
+  } catch (err: any) {
+    const message = err?.message ?? 'Failed to fetch from Google Forms API'
+    return c.json({ error: { code: 'GFORMS_API_ERROR', message } }, 502)
+  }
+})
+
 // POST /events — admin only
 classesRoute.post(
   '/',

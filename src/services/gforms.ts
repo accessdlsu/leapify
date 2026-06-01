@@ -157,7 +157,10 @@ export class GFormsService {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      if (!response.ok) throw new Error(`Forms API error: ${response.status}`);
+      if (!response.ok) {
+        const err = await response.text();
+        throw new Error(`Forms API error: ${response.status} ${err}`);
+      }
 
       const data = (await response.json()) as ListResponsesResult;
       allResponses.push(...(data.responses ?? []));

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { isNotNull } from "drizzle-orm";
 import type { LeapifyBindings } from "../types";
 import { createDb } from "../db";
 import { events } from "../db/schema/classes";
@@ -33,10 +33,9 @@ export async function reconcileSlots(env: LeapifyBindings): Promise<void> {
   try {
     // Fetch all published events with a Google Form
     const publishedEvents = await db.query.events.findMany({
-      where: eq(events.status, "published"),
+      where: isNotNull(events.gformsId),
       columns: { id: true, slug: true, gformsId: true, registeredSlots: true },
     });
-
     const eventsWithForms = publishedEvents.filter((e) => e.gformsId);
     let corrected = 0;
 
