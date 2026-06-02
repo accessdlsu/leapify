@@ -20,6 +20,8 @@ const EXEMPT_PATHS = [
   "/api/classes",
   "/api/faqs",
   "/api/config",
+  "/api/themes",
+  "/api/organizations",
   TURNSTILE_VERIFY_PATH,
 ];
 
