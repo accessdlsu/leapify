@@ -325,7 +325,7 @@ export function createLeapifyClient(baseUrl: string, getToken?: GetTokenFn) {
     /**
      * POST /api/themes — admin only.
      */
-    createTheme(data: Omit<Theme, "id" | "createdAt">): Promise<Theme> {
+    createTheme(data: Omit<Theme, "id" | "createdAt" | "path"> & { path?: string }): Promise<Theme> {
       return post<Theme>("/api/themes", data);
     },
 

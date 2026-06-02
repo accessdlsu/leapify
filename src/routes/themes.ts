@@ -1,16 +1,36 @@
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
-import { eq } from 'drizzle-orm'
+import { eq, asc } from 'drizzle-orm'
 import type { LeapifyEnv } from '../types'
 import { createDb } from '../db'
 import { themes } from '../db/schema/themes'
 import { authMiddleware, adminMiddleware } from '../auth/middleware'
 import { notFound, conflict } from '../lib/errors'
 
+function generatePath(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
 const createThemeSchema = z.object({
   name: z.string().min(1),
-  path: z.string().min(1),
+  imageUrl: z.string().url().nullable().optional(),
+  descriptionEn: z.string().nullable().optional(),
+  descriptionFil: z.string().nullable().optional(),
+  sortOrder: z.number().int().default(0),
+})
+
+const patchThemeSchema = z.object({
+  name: z.string().min(1).optional(),
+  imageUrl: z.string().url().nullable().optional(),
+  descriptionEn: z.string().nullable().optional(),
+  descriptionFil: z.string().nullable().optional(),
+  sortOrder: z.number().int().optional(),
 })
 
 export const themesRoute = new Hono<LeapifyEnv>()
@@ -18,7 +38,7 @@ export const themesRoute = new Hono<LeapifyEnv>()
 // GET /themes — public
 themesRoute.get('/', async (c) => {
   const db = createDb(c.env.DB)
-  const data = await db.select().from(themes)
+  const data = await db.select().from(themes).orderBy(asc(themes.sortOrder), asc(themes.createdAt))
   return c.json({ data })
 })
 
@@ -31,9 +51,9 @@ themesRoute.post(
   async (c) => {
     const body = c.req.valid('json')
     const db = createDb(c.env.DB)
-
+    const path = generatePath(body.name)
     try {
-      const [created] = await db.insert(themes).values(body).returning()
+      const [created] = await db.insert(themes).values({ ...body, path }).returning()
       return c.json({ data: created }, 201)
     } catch (err: any) {
       if (err.message && err.message.includes('UNIQUE constraint failed')) {
@@ -51,18 +71,19 @@ themesRoute.patch(
   adminMiddleware,
   async (c) => {
     const { id } = c.req.param()
-    const body = await c.req.json<Partial<z.infer<typeof createThemeSchema>>>()
+    const body = await c.req.json<z.infer<typeof patchThemeSchema>>()
     const db = createDb(c.env.DB)
-
+    const update: Record<string, unknown> = { ...body }
+    if (body.name) {
+      update.path = generatePath(body.name)
+    }
     try {
       const [updated] = await db
         .update(themes)
-        .set(body)
+        .set(update)
         .where(eq(themes.id, id))
         .returning()
-
       if (!updated) throw notFound('Theme')
-
       return c.json({ data: updated })
     } catch (err: any) {
       if (err.message && err.message.includes('UNIQUE constraint failed')) {
@@ -77,10 +98,7 @@ themesRoute.patch(
 themesRoute.delete('/:id', authMiddleware, adminMiddleware, async (c) => {
   const { id } = c.req.param()
   const db = createDb(c.env.DB)
-
   const [deleted] = await db.delete(themes).where(eq(themes.id, id)).returning()
-
   if (!deleted) throw notFound('Theme')
-
   return c.body(null, 204)
 })
