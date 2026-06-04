@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { zValidator } from '@hono/zod-validator'
+import { validator, describeRoute } from 'hono-openapi'
 import { z } from 'zod'
 import { eq, asc } from 'drizzle-orm'
 import type { LeapifyEnv } from '../types'
@@ -36,7 +36,14 @@ const patchThemeSchema = z.object({
 export const themesRoute = new Hono<LeapifyEnv>()
 
 // GET /themes — public
-themesRoute.get('/', async (c) => {
+themesRoute.get(
+  '/',
+  describeRoute({
+    tags: ['Themes'],
+    summary: 'List all themes',
+    responses: { 200: { description: 'List of themes' } },
+  }),
+  async (c) => {
   const db = createDb(c.env.DB)
   const data = await db.select().from(themes).orderBy(asc(themes.sortOrder), asc(themes.createdAt))
   return c.json({ data })
@@ -45,9 +52,18 @@ themesRoute.get('/', async (c) => {
 // POST /themes — admin only
 themesRoute.post(
   '/',
+  describeRoute({
+    tags: ['Themes'],
+    summary: 'Create a new theme (admin)',
+    responses: {
+      201: { description: 'Theme created' },
+      409: { description: 'Theme already exists' },
+      422: { description: 'Validation error' },
+    },
+  }),
   authMiddleware,
   adminMiddleware,
-  zValidator('json', createThemeSchema),
+  validator('json', createThemeSchema),
   async (c) => {
     const body = c.req.valid('json')
     const db = createDb(c.env.DB)
@@ -67,6 +83,15 @@ themesRoute.post(
 // PATCH /themes/:id — admin only
 themesRoute.patch(
   '/:id',
+  describeRoute({
+    tags: ['Themes'],
+    summary: 'Update a theme (admin)',
+    responses: {
+      200: { description: 'Theme updated' },
+      404: { description: 'Theme not found' },
+      409: { description: 'Theme already exists' },
+    },
+  }),
   authMiddleware,
   adminMiddleware,
   async (c) => {
@@ -95,7 +120,19 @@ themesRoute.patch(
 )
 
 // DELETE /themes/:id — admin only
-themesRoute.delete('/:id', authMiddleware, adminMiddleware, async (c) => {
+themesRoute.delete(
+  '/:id',
+  describeRoute({
+    tags: ['Themes'],
+    summary: 'Delete a theme (admin)',
+    responses: {
+      204: { description: 'Theme deleted' },
+      404: { description: 'Theme not found' },
+    },
+  }),
+  authMiddleware,
+  adminMiddleware,
+  async (c) => {
   const { id } = c.req.param()
   const db = createDb(c.env.DB)
   const [deleted] = await db.delete(themes).where(eq(themes.id, id)).returning()

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { describeRoute } from "hono-openapi";
 import { eq, and } from "drizzle-orm";
 import type { LeapifyEnv } from "../types";
 import { createDb } from "../db";
@@ -17,14 +18,36 @@ export const usersRoute = new Hono<LeapifyEnv>();
 // ─── Admin: User Management ─────────────────────────────────────────────────
 
 // GET /users — admin only, list all users
-usersRoute.get("/", authMiddleware, adminMiddleware, async (c) => {
+usersRoute.get(
+  "/",
+  describeRoute({
+    tags: ["Users"],
+    summary: "List all users (admin)",
+    responses: { 200: { description: "List of users" } },
+  }),
+  authMiddleware,
+  adminMiddleware,
+  async (c) => {
   const db = createDb(c.env.DB);
   const data = await db.select().from(users);
   return c.json({ data });
 });
 
 // PATCH /users/:id/role — admin only, change user role
-usersRoute.patch("/:id/role", authMiddleware, adminMiddleware, async (c) => {
+usersRoute.patch(
+  "/:id/role",
+  describeRoute({
+    tags: ["Users"],
+    summary: "Change user role (admin)",
+    responses: {
+      200: { description: "Role updated" },
+      400: { description: "Invalid role" },
+      404: { description: "User not found" },
+    },
+  }),
+  authMiddleware,
+  adminMiddleware,
+  async (c) => {
   const { id } = c.req.param();
   const { role } = await c.req.json<{ role: string }>();
 
@@ -45,7 +68,20 @@ usersRoute.patch("/:id/role", authMiddleware, adminMiddleware, async (c) => {
 });
 
 // POST /users/by-email — admin only, find or create user by email and set role
-usersRoute.post("/by-email", authMiddleware, adminMiddleware, async (c) => {
+usersRoute.post(
+  "/by-email",
+  describeRoute({
+    tags: ["Users"],
+    summary: "Find or create user by email (admin)",
+    responses: {
+      200: { description: "User updated" },
+      201: { description: "User created" },
+      400: { description: "Invalid email or role" },
+    },
+  }),
+  authMiddleware,
+  adminMiddleware,
+  async (c) => {
   const { email, role } = await c.req.json<{ email: string; role: string }>();
 
   if (!email || !role || !VALID_ROLES.includes(role as UserRole)) {
@@ -81,7 +117,15 @@ usersRoute.post("/by-email", authMiddleware, adminMiddleware, async (c) => {
 // ─── Public / Auth: User Profile ─────────────────────────────────────────────
 
 // GET /users/me
-usersRoute.get("/me", optionalAuthMiddleware, async (c) => {
+usersRoute.get(
+  "/me",
+  describeRoute({
+    tags: ["Users"],
+    summary: "Get current user profile",
+    responses: { 200: { description: "Current user profile or null" } },
+  }),
+  optionalAuthMiddleware,
+  async (c) => {
   const user = c.get("user");
   if (!user) return c.json({ data: null });
 
@@ -102,7 +146,15 @@ usersRoute.get("/me", optionalAuthMiddleware, async (c) => {
 });
 
 // GET /users/me/bookmarks
-usersRoute.get("/me/bookmarks", optionalAuthMiddleware, async (c) => {
+usersRoute.get(
+  "/me/bookmarks",
+  describeRoute({
+    tags: ["Users"],
+    summary: "Get current user's bookmarks",
+    responses: { 200: { description: "List of bookmarked events" } },
+  }),
+  optionalAuthMiddleware,
+  async (c) => {
   const user = c.get("user");
   if (!user) return c.json({ data: [] });
 
@@ -117,7 +169,20 @@ usersRoute.get("/me/bookmarks", optionalAuthMiddleware, async (c) => {
 });
 
 // POST /users/me/bookmarks/:eventId — toggle
-usersRoute.post("/me/bookmarks/:eventId", authMiddleware, bookmarksRateLimit, async (c) => {
+usersRoute.post(
+  "/me/bookmarks/:eventId",
+  describeRoute({
+    tags: ["Users"],
+    summary: "Toggle bookmark for an event",
+    responses: {
+      201: { description: "Bookmark created" },
+      200: { description: "Bookmark removed" },
+      404: { description: "Event not found" },
+    },
+  }),
+  authMiddleware,
+  bookmarksRateLimit,
+  async (c) => {
   const { eventId } = c.req.param();
   const user = c.get("user");
   const db = createDb(c.env.DB);
@@ -148,7 +213,15 @@ usersRoute.post("/me/bookmarks/:eventId", authMiddleware, bookmarksRateLimit, as
 });
 
 // DELETE /users/me/bookmarks/:eventId
-usersRoute.delete("/me/bookmarks/:eventId", authMiddleware, async (c) => {
+usersRoute.delete(
+  "/me/bookmarks/:eventId",
+  describeRoute({
+    tags: ["Users"],
+    summary: "Remove bookmark for an event",
+    responses: { 200: { description: "Bookmark removed" } },
+  }),
+  authMiddleware,
+  async (c) => {
   const { eventId } = c.req.param();
   const user = c.get("user");
   const db = createDb(c.env.DB);

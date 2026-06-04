@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { describeRoute } from "hono-openapi";
 import { eq } from "drizzle-orm";
 import type { LeapifyEnv } from "../../types";
 import { createDb } from "../../db";
@@ -20,7 +21,20 @@ export const gformsWebhookRoute = new Hono<LeapifyEnv>();
  *   1. X-Internal-Secret header (internalMiddleware) — prevents external access
  *   2. X-Goog-Signature HMAC  — verifies payload is genuinely from Google
  */
-gformsWebhookRoute.post("/", internalMiddleware, async (c) => {
+gformsWebhookRoute.post(
+  "/",
+  describeRoute({
+    tags: ["Internal"],
+    summary: "Google Forms webhook receiver",
+    description: "Receives Google Forms Watch push notifications and increments slot counters.",
+    responses: {
+      200: { description: "Notification processed" },
+      400: { description: "Invalid payload" },
+      403: { description: "Invalid HMAC signature" },
+    },
+  }),
+  internalMiddleware,
+  async (c) => {
   const rawBody = await c.req.text();
 
   // Verify Google HMAC signature

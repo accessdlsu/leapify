@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { describeRoute } from 'hono-openapi'
 import type { LeapifyEnv } from '../types'
 import { authMiddleware, adminMiddleware } from '../auth/middleware'
 import { badRequest, serviceUnavailable, notFound } from '../lib/errors'
@@ -23,7 +24,17 @@ export const uploadsRoute = new Hono<LeapifyEnv>()
  *
  * Serves an image from the R2 `FILES` bucket.
  */
-uploadsRoute.get('/images/*', async (c) => {
+uploadsRoute.get(
+  '/images/*',
+  describeRoute({
+    tags: ['Uploads'],
+    summary: 'Serve an image from R2 storage',
+    responses: {
+      200: { description: 'Image file' },
+      404: { description: 'Image not found' },
+    },
+  }),
+  async (c) => {
   const bucket = c.env.FILES
   if (!bucket) {
     throw serviceUnavailable('File storage (R2) is not configured.')
@@ -61,6 +72,15 @@ uploadsRoute.get('/images/*', async (c) => {
  */
 uploadsRoute.post(
   '/images',
+  describeRoute({
+    tags: ['Uploads'],
+    summary: 'Upload an image to R2 storage (admin)',
+    responses: {
+      201: { description: 'Image uploaded successfully' },
+      400: { description: 'Invalid file or MIME type' },
+      503: { description: 'R2 storage not configured' },
+    },
+  }),
   authMiddleware,
   adminMiddleware,
   async (c) => {

@@ -22,6 +22,8 @@ const EXEMPT_PATHS = [
   "/api/config",
   "/api/themes",
   "/api/organizations",
+  "/api/docs",
+  "/api/openapi.json",
   TURNSTILE_VERIFY_PATH,
 ];
 

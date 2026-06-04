@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { zValidator } from '@hono/zod-validator'
+import { validator, describeRoute } from 'hono-openapi'
 import { z } from 'zod'
 import { eq, and, sql } from 'drizzle-orm'
 import type { LeapifyEnv } from '../types'
@@ -54,7 +54,16 @@ function generateSlug(title: string): string {
 }
 
 // GET /events/admin — admin only, returns all events regardless of status
-classesRoute.get('/admin', authMiddleware, adminMiddleware, async (c) => {
+classesRoute.get(
+  '/admin',
+  describeRoute({
+    tags: ['Events'],
+    summary: 'List all events (admin)',
+    responses: { 200: { description: 'List of all events' } },
+  }),
+  authMiddleware,
+  adminMiddleware,
+  async (c) => {
   const db = createDb(c.env.DB)
   const data = await db.query.events.findMany({
     with: { theme: true, organization: true },
@@ -64,7 +73,19 @@ classesRoute.get('/admin', authMiddleware, adminMiddleware, async (c) => {
 })
 
 // POST /events/admin/publish — admin only, batch publish queued events
-classesRoute.post('/admin/publish', authMiddleware, adminMiddleware, async (c) => {
+classesRoute.post(
+  '/admin/publish',
+  describeRoute({
+    tags: ['Events'],
+    summary: 'Batch publish queued events',
+    responses: {
+      200: { description: 'Events published successfully' },
+      400: { description: 'Missing event IDs' },
+    },
+  }),
+  authMiddleware,
+  adminMiddleware,
+  async (c) => {
   const body = await c.req.json<{ ids: string[]; releaseAt?: number }>()
   const db = createDb(c.env.DB)
   const cache = new CacheService(c.env.KV)
@@ -106,7 +127,15 @@ classesRoute.post('/admin/publish', authMiddleware, adminMiddleware, async (c) =
 })
 
 // GET /events — public, ETag + 7-day browser cache
-classesRoute.get('/', eventsListRateLimit, async (c) => {
+classesRoute.get(
+  '/',
+  describeRoute({
+    tags: ['Events'],
+    summary: 'List published events',
+    responses: { 200: { description: 'List of published events with themes' } },
+  }),
+  eventsListRateLimit,
+  async (c) => {
   const db = createDb(c.env.DB)
   const cache = new CacheService(c.env.KV)
 
@@ -172,7 +201,17 @@ classesRoute.get('/', eventsListRateLimit, async (c) => {
 })
 
 // GET /events/:slug
-classesRoute.get('/:slug', async (c) => {
+classesRoute.get(
+  '/:slug',
+  describeRoute({
+    tags: ['Events'],
+    summary: 'Get event by slug',
+    responses: {
+      200: { description: 'Event details' },
+      404: { description: 'Event not found' },
+    },
+  }),
+  async (c) => {
   const { slug } = c.req.param()
   const db = createDb(c.env.DB)
 
@@ -189,7 +228,18 @@ classesRoute.get('/:slug', async (c) => {
 })
 
 // GET /events/:slug/slots — real-time, CF Cache 5s
-classesRoute.get('/:slug/slots', eventsSlotsRateLimit, async (c) => {
+classesRoute.get(
+  '/:slug/slots',
+  describeRoute({
+    tags: ['Events'],
+    summary: 'Get event slot availability',
+    responses: {
+      200: { description: 'Slot availability info' },
+      404: { description: 'Event not found' },
+    },
+  }),
+  eventsSlotsRateLimit,
+  async (c) => {
   const { slug } = c.req.param()
   const db = createDb(c.env.DB)
   const cache = new CacheService(c.env.KV)
@@ -205,7 +255,21 @@ classesRoute.get('/:slug/slots', eventsSlotsRateLimit, async (c) => {
 })
 
 // POST /events/:slug/reconcile — admin only, corrects slot count for one event
-classesRoute.post('/:slug/reconcile', authMiddleware, adminMiddleware, async (c) => {
+classesRoute.post(
+  '/:slug/reconcile',
+  describeRoute({
+    tags: ['Events'],
+    summary: 'Reconcile event slot count with Google Forms',
+    responses: {
+      200: { description: 'Slot count reconciled' },
+      400: { description: 'No gformsId set' },
+      404: { description: 'Event not found' },
+      502: { description: 'Google Forms API error' },
+    },
+  }),
+  authMiddleware,
+  adminMiddleware,
+  async (c) => {
   const { slug } = c.req.param()
   const db = createDb(c.env.DB)
   const cache = new CacheService(c.env.KV)
@@ -232,10 +296,18 @@ classesRoute.post('/:slug/reconcile', authMiddleware, adminMiddleware, async (c)
 // POST /events — admin only
 classesRoute.post(
   '/',
+  describeRoute({
+    tags: ['Events'],
+    summary: 'Create a new event',
+    responses: {
+      201: { description: 'Event created successfully' },
+      422: { description: 'Validation error' },
+    },
+  }),
   authMiddleware,
   adminMiddleware,
   adminEventsRateLimit,
-  zValidator('json', createEventSchema),
+  validator('json', createEventSchema),
   async (c) => {
     const body = c.req.valid('json')
     const db = createDb(c.env.DB)
@@ -284,7 +356,19 @@ classesRoute.post(
 )
 
 // PATCH /events/:slug — admin only
-classesRoute.patch('/:slug', authMiddleware, adminMiddleware, async (c) => {
+classesRoute.patch(
+  '/:slug',
+  describeRoute({
+    tags: ['Events'],
+    summary: 'Update an event',
+    responses: {
+      200: { description: 'Event updated successfully' },
+      404: { description: 'Event not found' },
+    },
+  }),
+  authMiddleware,
+  adminMiddleware,
+  async (c) => {
   const { slug } = c.req.param()
   const body = await c.req.json<Partial<z.infer<typeof createEventSchema>>>()
   const db = createDb(c.env.DB)
@@ -312,7 +396,19 @@ classesRoute.patch('/:slug', authMiddleware, adminMiddleware, async (c) => {
 })
 
 // DELETE /events/:slug — admin only
-classesRoute.delete('/:slug', authMiddleware, adminMiddleware, async (c) => {
+classesRoute.delete(
+  '/:slug',
+  describeRoute({
+    tags: ['Events'],
+    summary: 'Delete an event',
+    responses: {
+      204: { description: 'Event deleted' },
+      404: { description: 'Event not found' },
+    },
+  }),
+  authMiddleware,
+  adminMiddleware,
+  async (c) => {
   const { slug } = c.req.param()
   const db = createDb(c.env.DB)
   const cache = new CacheService(c.env.KV)

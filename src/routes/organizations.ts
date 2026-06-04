@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { zValidator } from '@hono/zod-validator'
+import { validator, describeRoute } from 'hono-openapi'
 import { z } from 'zod'
 import { eq } from 'drizzle-orm'
 import type { LeapifyEnv } from '../types'
@@ -18,7 +18,14 @@ const createOrganizationSchema = z.object({
 export const organizationsRoute = new Hono<LeapifyEnv>()
 
 // GET /organizations — public
-organizationsRoute.get('/', async (c) => {
+organizationsRoute.get(
+  '/',
+  describeRoute({
+    tags: ['Organizations'],
+    summary: 'List all organizations',
+    responses: { 200: { description: 'List of organizations' } },
+  }),
+  async (c) => {
   const db = createDb(c.env.DB)
   const data = await db.select().from(organizations)
   return c.json({ data })
@@ -27,9 +34,18 @@ organizationsRoute.get('/', async (c) => {
 // POST /organizations — admin only
 organizationsRoute.post(
   '/',
+  describeRoute({
+    tags: ['Organizations'],
+    summary: 'Create a new organization (admin)',
+    responses: {
+      201: { description: 'Organization created' },
+      409: { description: 'Organization already exists' },
+      422: { description: 'Validation error' },
+    },
+  }),
   authMiddleware,
   adminMiddleware,
-  zValidator('json', createOrganizationSchema),
+  validator('json', createOrganizationSchema),
   async (c) => {
     const body = c.req.valid('json')
     const db = createDb(c.env.DB)
@@ -49,6 +65,15 @@ organizationsRoute.post(
 // PATCH /organizations/:id — admin only
 organizationsRoute.patch(
   '/:id',
+  describeRoute({
+    tags: ['Organizations'],
+    summary: 'Update an organization (admin)',
+    responses: {
+      200: { description: 'Organization updated' },
+      404: { description: 'Organization not found' },
+      409: { description: 'Organization already exists' },
+    },
+  }),
   authMiddleware,
   adminMiddleware,
   async (c) => {
@@ -76,7 +101,19 @@ organizationsRoute.patch(
 )
 
 // DELETE /organizations/:id — admin only
-organizationsRoute.delete('/:id', authMiddleware, adminMiddleware, async (c) => {
+organizationsRoute.delete(
+  '/:id',
+  describeRoute({
+    tags: ['Organizations'],
+    summary: 'Delete an organization (admin)',
+    responses: {
+      204: { description: 'Organization deleted' },
+      404: { description: 'Organization not found' },
+    },
+  }),
+  authMiddleware,
+  adminMiddleware,
+  async (c) => {
   const { id } = c.req.param()
   const db = createDb(c.env.DB)
 

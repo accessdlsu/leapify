@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { describeRoute } from 'hono-openapi'
 import type { LeapifyEnv } from '../types'
 import { authMiddleware, adminMiddleware } from '../auth/middleware'
 
@@ -167,7 +168,14 @@ async function probeGForms(
  *     }
  *   }
  */
-healthRoute.get('/', async (c) => {
+healthRoute.get(
+  '/',
+  describeRoute({
+    tags: ['Health'],
+    summary: 'Service health check',
+    responses: { 200: { description: 'Health status of configured services' } },
+  }),
+  async (c) => {
   const env = c.env
 
   const hasSes = Boolean(env.SES_REGION) && Boolean(env.SES_ACCESS_KEY_ID) && Boolean(env.SES_SECRET_ACCESS_KEY)
@@ -229,7 +237,16 @@ healthRoute.get('/', async (c) => {
  * POST /health/queue-burst
  * Internal load testing endpoint that blasts 100 mock items into the queue.
  */
-healthRoute.post('/queue-burst', authMiddleware, adminMiddleware, async (c) => {
+healthRoute.post(
+  '/queue-burst',
+  describeRoute({
+    tags: ['Health'],
+    summary: 'Queue load test (admin)',
+    responses: { 200: { description: 'Items queued' } },
+  }),
+  authMiddleware,
+  adminMiddleware,
+  async (c) => {
   if (!c.env.EMAIL_QUEUE) {
     return c.json({ error: 'Queue binding missing' }, 400)
   }

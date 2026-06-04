@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { describeRoute } from 'hono-openapi'
 import type { LeapifyEnv, SiteConfigKey, SiteConfigMap } from '../types'
 import { createDb } from '../db'
 import { siteConfig } from '../db/schema/site-config'
@@ -8,7 +9,14 @@ import { forbidden } from '../lib/errors'
 export const siteConfigRoute = new Hono<LeapifyEnv>()
 
 // GET /config — public
-siteConfigRoute.get('/', async (c) => {
+siteConfigRoute.get(
+  '/',
+  describeRoute({
+    tags: ['Site Config'],
+    summary: 'Get public site configuration',
+    responses: { 200: { description: 'Site configuration values' } },
+  }),
+  async (c) => {
   const db = createDb(c.env.DB)
 
   const rows = await db.query.siteConfig.findMany()
@@ -30,7 +38,19 @@ siteConfigRoute.get('/', async (c) => {
 })
 
 // PATCH /config/:key — admin only (allowed_origins is super_admin only)
-siteConfigRoute.patch('/:key', authMiddleware, adminMiddleware, async (c) => {
+siteConfigRoute.patch(
+  '/:key',
+  describeRoute({
+    tags: ['Site Config'],
+    summary: 'Update a site configuration key (admin)',
+    responses: {
+      200: { description: 'Config updated' },
+      403: { description: 'Super admin required for this key' },
+    },
+  }),
+  authMiddleware,
+  adminMiddleware,
+  async (c) => {
   const key = c.req.param('key') as SiteConfigKey
   const { value } = await c.req.json<{ value: SiteConfigMap[typeof key] }>()
 

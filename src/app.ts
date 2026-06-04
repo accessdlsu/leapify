@@ -1,4 +1,6 @@
 import { Hono } from 'hono'
+import { openAPIRouteHandler } from 'hono-openapi'
+import { swaggerUI } from '@hono/swagger-ui'
 import type { LeapifyEnv } from './types'
 import { errorHandler } from './lib/middleware/error-handler'
 import { createCorsMiddleware } from './lib/middleware/cors'
@@ -10,6 +12,7 @@ import {
 } from './lib/middleware/turnstile-challenge'
 import { serviceUnavailable } from './lib/errors'
 import { createAuth } from './auth/auth'
+import { authMiddleware, adminMiddleware } from './auth/middleware'
 import { healthRoute } from './routes/health'
 import { classesRoute } from './routes/classes'
 import { usersRoute } from './routes/users'
@@ -112,6 +115,30 @@ export function createApp(options: LeapifyAppOptions = {}): Hono<LeapifyEnv> {
   app.route('/internal/batch-release', batchReleaseRoute)
   app.route('/internal/reminder-emails', reminderEmailsRoute)
   app.route('/internal/renew-watches', renewWatchesRoute)
+
+  // OpenAPI docs — admin only
+  app.get(
+    '/api/openapi.json',
+    authMiddleware,
+    adminMiddleware,
+    openAPIRouteHandler(app, {
+      documentation: {
+        info: {
+          title: 'Leapify API',
+          version: '0.260602.1',
+          description: 'DLSU CSO LEAP backend API',
+        },
+        openapi: '3.1.0',
+      },
+    }),
+  )
+
+  app.get(
+    '/api/docs',
+    authMiddleware,
+    adminMiddleware,
+    swaggerUI({ url: '/api/openapi.json' }),
+  )
 
   // Error handler
   app.onError(errorHandler)

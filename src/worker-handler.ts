@@ -35,6 +35,8 @@ const API_PREFIXES = [
   "/api/themes",
   "/api/config",
   "/api/uploads",
+  "/api/docs",
+  "/api/openapi.json",
   "/health",
   "/internal/",
   "/.well-known/",

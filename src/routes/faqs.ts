@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { zValidator } from '@hono/zod-validator'
+import { validator, describeRoute } from 'hono-openapi'
 import { z } from 'zod'
 import { eq } from 'drizzle-orm'
 import type { LeapifyEnv } from '../types'
@@ -22,7 +22,14 @@ const faqSchema = z.object({
 export const faqsRoute = new Hono<LeapifyEnv>()
 
 // GET /faqs — public, KV cached 10min
-faqsRoute.get('/', async (c) => {
+faqsRoute.get(
+  '/',
+  describeRoute({
+    tags: ['FAQs'],
+    summary: 'List all active FAQs',
+    responses: { 200: { description: 'List of FAQs' } },
+  }),
+  async (c) => {
   const db = createDb(c.env.DB)
   const cache = new CacheService(c.env.KV)
 
@@ -41,9 +48,17 @@ faqsRoute.get('/', async (c) => {
 // POST /faqs — admin
 faqsRoute.post(
   '/',
+  describeRoute({
+    tags: ['FAQs'],
+    summary: 'Create a new FAQ (admin)',
+    responses: {
+      201: { description: 'FAQ created' },
+      422: { description: 'Validation error' },
+    },
+  }),
   authMiddleware,
   adminMiddleware,
-  zValidator('json', faqSchema),
+  validator('json', faqSchema),
   async (c) => {
     const body = c.req.valid('json')
     const db = createDb(c.env.DB)
@@ -57,7 +72,19 @@ faqsRoute.post(
 )
 
 // PATCH /faqs/:id — admin
-faqsRoute.patch('/:id', authMiddleware, adminMiddleware, async (c) => {
+faqsRoute.patch(
+  '/:id',
+  describeRoute({
+    tags: ['FAQs'],
+    summary: 'Update an FAQ (admin)',
+    responses: {
+      200: { description: 'FAQ updated' },
+      404: { description: 'FAQ not found' },
+    },
+  }),
+  authMiddleware,
+  adminMiddleware,
+  async (c) => {
   const { id } = c.req.param()
   const body = await c.req.json<Partial<z.infer<typeof faqSchema>>>()
   const db = createDb(c.env.DB)
@@ -77,7 +104,19 @@ faqsRoute.patch('/:id', authMiddleware, adminMiddleware, async (c) => {
 })
 
 // DELETE /faqs/:id — admin, hard delete
-faqsRoute.delete('/:id', authMiddleware, adminMiddleware, async (c) => {
+faqsRoute.delete(
+  '/:id',
+  describeRoute({
+    tags: ['FAQs'],
+    summary: 'Delete an FAQ (admin)',
+    responses: {
+      200: { description: 'FAQ deleted' },
+      404: { description: 'FAQ not found' },
+    },
+  }),
+  authMiddleware,
+  adminMiddleware,
+  async (c) => {
   const { id } = c.req.param()
   const db = createDb(c.env.DB)
   const cache = new CacheService(c.env.KV)
