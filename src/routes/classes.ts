@@ -53,6 +53,18 @@ function generateSlug(title: string): string {
     .replace(/^-+|-+$/g, '')
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function serializeEvent(event: any) {
+  if (!event) return event
+  const { dateTime, ...rest } = event
+  return { ...rest, date: dateTime }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function serializeEvents(events: any[]) {
+  return events.map(serializeEvent)
+}
+
 // GET /events/admin — admin only, returns all events regardless of status
 classesRoute.get(
   '/admin',
@@ -69,7 +81,7 @@ classesRoute.get(
     with: { theme: true, organization: true },
     orderBy: (e, { desc }) => [desc(e.createdAt)],
   })
-  return c.json({ data })
+  return c.json({ data: serializeEvents(data) })
 })
 
 // POST /events/admin/publish — admin only, batch publish queued events
@@ -197,7 +209,7 @@ classesRoute.get(
     'Cache-Control',
     'public, max-age=604800, stale-while-revalidate=86400',
   ) // 7 days
-  return c.json({ data })
+  return c.json({ data: serializeEvents(data) })
 })
 
 // GET /events/:slug
@@ -224,7 +236,7 @@ classesRoute.get(
 
   if (!event) throw notFound('Event')
 
-  return c.json({ data: event })
+  return c.json({ data: serializeEvent(event) })
 })
 
 // GET /events/:slug/slots — real-time, CF Cache 5s
@@ -351,7 +363,7 @@ classesRoute.post(
       cache.del(EVENTS_ETAG_KV_KEY),
     ])
 
-    return c.json({ data: created }, 201)
+    return c.json({ data: serializeEvent(created) }, 201)
   },
 )
 
@@ -392,7 +404,7 @@ classesRoute.patch(
     cache.del(EVENTS_ETAG_KV_KEY),
   ])
 
-  return c.json({ data: updated })
+  return c.json({ data: serializeEvent(updated) })
 })
 
 // DELETE /events/:slug — admin only

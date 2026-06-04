@@ -60,7 +60,7 @@ export interface LeapEvent {
   title: string;
   description: string | null;
   venue: string | null;
-  dateTime: string | null;
+  date: string | null;
   price: string | null;
   backgroundImageUrl: string | null;
   classCode: string | null;

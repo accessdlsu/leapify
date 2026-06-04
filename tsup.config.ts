@@ -1,4 +1,7 @@
+import { readFileSync } from 'node:fs'
 import { defineConfig } from 'tsup'
+
+const pkg = JSON.parse(readFileSync('package.json', 'utf-8'))
 
 export default defineConfig([
   // ── npm module entries (ESM + CJS) ──────────────────────────────────────
@@ -19,6 +22,12 @@ export default defineConfig([
     external: ['hono', '@cloudflare/workers-types', '@opentelemetry/api'],
     outDir: 'dist',
     tsconfig: 'tsconfig.build.json',
+    esbuildOptions(opts) {
+      opts.define = {
+        ...opts.define,
+        __APP_VERSION__: JSON.stringify(pkg.version),
+      }
+    },
   },
 
   // ── standalone worker entry (ESM only — CF Workers require ESM) ─────────
@@ -41,6 +50,10 @@ export default defineConfig([
     esbuildOptions(opts) {
       opts.platform = 'browser' // CF Workers target
       opts.conditions = ['workerd', 'worker', 'browser']
+      opts.define = {
+        ...opts.define,
+        __APP_VERSION__: JSON.stringify(pkg.version),
+      }
     },
   },
 ])

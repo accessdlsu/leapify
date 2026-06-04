@@ -2,6 +2,8 @@ import { Hono } from 'hono'
 import { openAPIRouteHandler } from 'hono-openapi'
 import { swaggerUI } from '@hono/swagger-ui'
 import type { LeapifyEnv } from './types'
+
+declare const __APP_VERSION__: string
 import { errorHandler } from './lib/middleware/error-handler'
 import { createCorsMiddleware } from './lib/middleware/cors'
 import { createRefererGuard } from './lib/middleware/referer-guard'
@@ -125,7 +127,7 @@ export function createApp(options: LeapifyAppOptions = {}): Hono<LeapifyEnv> {
       documentation: {
         info: {
           title: 'Leapify API',
-          version: '0.260602.1',
+          version: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0',
           description: 'DLSU CSO LEAP backend API',
         },
         openapi: '3.1.0',
