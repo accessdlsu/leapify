@@ -20,7 +20,7 @@ export async function reconcileSlots(env: LeapifyBindings): Promise<void> {
   const db = createDb(env.DB);
   const cache = new CacheService(env.KV);
   const gforms = new GFormsService(env.GFORMS_SERVICE_ACCOUNT_JSON);
-  const slots = new SlotsService(db, cache);
+  const slots = new SlotsService(db);
 
   // Distributed lock
   const lock = await cache.get<string>(LOCK_KEY);

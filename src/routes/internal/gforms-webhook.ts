@@ -5,7 +5,6 @@ import type { LeapifyEnv } from "../../types";
 import { createDb } from "../../db";
 import { events } from "../../db/schema/classes";
 import { SlotsService } from "../../services/slots";
-import { CacheService } from "../../services/cache";
 import { internalMiddleware } from "../../auth/middleware";
 
 export const gformsWebhookRoute = new Hono<LeapifyEnv>();
@@ -61,7 +60,6 @@ gformsWebhookRoute.post(
   if (!formId) return c.json({ error: "Missing formId" }, 400);
 
   const db = createDb(c.env.DB);
-  const cache = new CacheService(c.env.KV);
 
   const event = await db.query.events.findFirst({
     where: eq(events.gformsId, formId),
@@ -73,7 +71,7 @@ gformsWebhookRoute.post(
     return c.json({ ok: true });
   }
 
-  const slotsService = new SlotsService(db, cache);
+  const slotsService = new SlotsService(db);
   const updated = await slotsService.increment(event.slug);
 
   console.log(
