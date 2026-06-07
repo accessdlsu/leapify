@@ -45,7 +45,7 @@ export function createCorsMiddleware(
     }
 
     // Public Image Exemption: Allow any origin for images and skip strict checks.
-    if (c.req.path.startsWith('/api/uploads/images')) {
+    if (c.req.path.startsWith('/api/uploads')) {
       c.header('Access-Control-Allow-Origin', '*')
       c.header('Access-Control-Allow-Methods', 'GET, OPTIONS')
       if (c.req.method === 'OPTIONS') {

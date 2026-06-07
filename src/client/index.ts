@@ -481,7 +481,7 @@ export function createLeapifyClient(baseUrl: string, getToken?: GetTokenFn) {
     // ── Uploads ────────────────────────────────────────────────────────────
 
     /**
-     * POST /api/uploads/images — admin only.
+     * POST /api/uploads — admin only.
      * Uploads an image file to R2. Accepts multipart/form-data.
      * Returns the public URL, storage key, size, and content type.
      */
@@ -493,7 +493,7 @@ export function createLeapifyClient(baseUrl: string, getToken?: GetTokenFn) {
     }> {
       const formData = new FormData();
       formData.append("file", file);
-      return postFormData("/api/uploads/images", formData);
+      return postFormData("/api/uploads", formData);
     },
 
     // ── Health ─────────────────────────────────────────────────────────────

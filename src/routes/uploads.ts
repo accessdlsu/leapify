@@ -20,12 +20,12 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024
 export const uploadsRoute = new Hono<LeapifyEnv>()
 
 /**
- * GET /uploads/images/* — public
+ * GET /uploads/* — public
  *
  * Serves an image from the R2 `FILES` bucket.
  */
 uploadsRoute.get(
-  '/images/*',
+  '/*',
   describeRoute({
     tags: ['Uploads'],
     summary: 'Serve an image from R2 storage',
@@ -40,8 +40,8 @@ uploadsRoute.get(
     throw serviceUnavailable('File storage (R2) is not configured.')
   }
 
-  // Get the path after /images/
-  const path = c.req.path.split('/uploads/images/')[1]
+  // Get the path after /uploads/
+  const path = c.req.path.split('/uploads/')[1]
   if (!path) throw notFound('Image')
 
   const object = await bucket.get(path)
@@ -64,14 +64,14 @@ uploadsRoute.get(
 })
 
 /**
- * POST /uploads/images — admin only
+ * POST /uploads — admin only
  *
  * Accepts multipart/form-data with a single `file` field.
  * Stores the file in the R2 `FILES` bucket under a timestamped path and
  * returns the public URL.
  */
 uploadsRoute.post(
-  '/images',
+  '/',
   describeRoute({
     tags: ['Uploads'],
     summary: 'Upload an image to R2 storage (admin)',
@@ -129,9 +129,9 @@ uploadsRoute.post(
       customMetadata: { uploadedAt: new Date().toISOString() },
     })
 
-    // Construct URL based on the current request
+    // Construct relative URL (no hostname)
     const url = new URL(c.req.url)
-    url.pathname = `${url.pathname.replace(/\/$/, '')}/${key}`
+    url.pathname = `/${key}`
     url.search = ''
 
     return c.json(
