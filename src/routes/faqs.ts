@@ -10,7 +10,7 @@ import { authMiddleware, adminMiddleware } from '../auth/middleware'
 import { notFound } from '../lib/errors'
 
 const FAQS_KV_KEY = 'faqs:active'
-const FAQS_TTL = 600 // 10 min
+const FAQS_TTL = 86400 // 1 day KV cache
 
 const faqSchema = z.object({
   question: z.string().min(1),
@@ -42,7 +42,8 @@ faqsRoute.get(
     FAQS_TTL,
   )
 
-  return c.json({ data })
+  const serialized = data.map(({ sortOrder, ...rest }) => rest)
+  return c.json({ data: serialized })
 })
 
 // POST /faqs — admin

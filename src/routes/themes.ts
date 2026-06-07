@@ -46,7 +46,8 @@ themesRoute.get(
   async (c) => {
   const db = createDb(c.env.DB)
   const data = await db.select().from(themes).orderBy(asc(themes.sortOrder), asc(themes.createdAt))
-  return c.json({ data })
+  const serialized = data.map(({ sortOrder, ...rest }) => rest)
+  return c.json({ data: serialized })
 })
 
 // POST /themes — admin only

@@ -18,7 +18,7 @@ import {
 
 const EVENTS_LIST_KV_KEY = 'events:list'
 const EVENTS_ETAG_KV_KEY = 'events:etag'
-const EVENTS_LIST_TTL = 300 // 5 min KV cache for list
+const EVENTS_LIST_TTL = 3600 // 1hr KV cache for list
 
 const createEventSchema = z.object({
   themeId: z.string().min(1),
@@ -196,7 +196,6 @@ classesRoute.get(
           registrationClosesAt: true,
           isSpotlight: true,
           maxSlots: true,
-          registeredSlots: true,
           gformsUrl: true,
         },
       }),
@@ -204,10 +203,6 @@ classesRoute.get(
   )
 
   c.header('ETag', etag)
-  c.header(
-    'Cache-Control',
-    'public, max-age=604800, stale-while-revalidate=86400',
-  ) // 7 days
   return c.json({ data: serializeEvents(data) })
 })
 
@@ -235,7 +230,8 @@ classesRoute.get(
 
   if (!event) throw notFound('Event')
 
-  return c.json({ data: serializeEvent(event) })
+  const { registeredSlots: _, ...rest } = event
+  return c.json({ data: serializeEvent(rest) })
 })
 
 // GET /events/:slug/slots — real-time, CF Cache 5s
@@ -253,14 +249,13 @@ classesRoute.get(
   async (c) => {
   const { slug } = c.req.param()
   const db = createDb(c.env.DB)
-  const cache = new CacheService(c.env.KV)
-  const slotsService = new SlotsService(db, cache)
+  const slotsService = new SlotsService(db)
 
   const info = await slotsService.getSlots(slug)
   if (!info) throw notFound('Event')
 
-  // CF edge cache: all 30k users share this cached response for 5s
-  c.header('Cache-Control', 'public, max-age=5, stale-while-revalidate=5')
+  // CF edge cache: all 30k users share this cached response for 3s
+  c.header('Cache-Control', 'public, max-age=3, stale-while-revalidate=3')
 
   return c.json({ data: info })
 })
@@ -283,9 +278,8 @@ classesRoute.post(
   async (c) => {
   const { slug } = c.req.param()
   const db = createDb(c.env.DB)
-  const cache = new CacheService(c.env.KV)
   const gforms = new GFormsService(c.env.GFORMS_SERVICE_ACCOUNT_JSON)
-  const slots = new SlotsService(db, cache)
+  const slots = new SlotsService(db)
 
   const event = await db.query.events.findFirst({
     where: eq(events.slug, slug),
