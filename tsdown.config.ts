@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs'
-import { defineConfig } from 'tsup'
+import { defineConfig } from 'tsdown'
 
 const pkg = JSON.parse(readFileSync('package.json', 'utf-8'))
+const defines = { __APP_VERSION__: JSON.stringify(pkg.version) }
 
 export default defineConfig([
   // ── npm module entries (ESM + CJS) ──────────────────────────────────────
@@ -13,21 +14,19 @@ export default defineConfig([
       'src/lib/middleware/turnstile-challenge.ts',
     ],
     format: ['esm', 'cjs'],
+    outExtensions: ({ format }) => ({
+      js: format === 'es' ? '.js' : '.cjs',
+    }),
     dts: false,
-    splitting: true,
     treeshake: true,
-    clean: true,
     sourcemap: false,
     target: 'es2022',
-    external: ['hono', '@cloudflare/workers-types', '@opentelemetry/api'],
     outDir: 'dist',
     tsconfig: 'tsconfig.build.json',
-    esbuildOptions(opts) {
-      opts.define = {
-        ...opts.define,
-        __APP_VERSION__: JSON.stringify(pkg.version),
-      }
+    deps: {
+      neverBundle: ['@opentelemetry/api'],
     },
+    define: defines,
   },
 
   // ── standalone worker entry (ESM only — CF Workers require ESM) ─────────
@@ -36,24 +35,14 @@ export default defineConfig([
     entry: { worker: 'src/worker.ts' },
     format: ['esm'],
     dts: false, // worker.ts is not a public API surface
-    splitting: false,
     treeshake: true,
     sourcemap: false,
     target: 'es2022',
-    external: ['hono', '@cloudflare/workers-types', '@opentelemetry/api'],
-    outDir: 'dist',
-    // Bundle everything into one file so wrangler can upload it without
-    // needing a bundler step in the consumer's deploy pipeline.
-    // Keep the browser guard from src/index.ts from throwing in CF Workers.
-    // CF Workers don't define `document` so the guard is fine — but we
-    // explicitly mark it as no-side-effects-removal.
-    esbuildOptions(opts) {
-      opts.platform = 'browser' // CF Workers target
-      opts.conditions = ['workerd', 'worker', 'browser']
-      opts.define = {
-        ...opts.define,
-        __APP_VERSION__: JSON.stringify(pkg.version),
-      }
+    deps: {
+      neverBundle: ['hono', '@cloudflare/workers-types', '@opentelemetry/api'],
     },
+    outDir: 'dist',
+    platform: 'browser',
+    define: defines,
   },
 ])

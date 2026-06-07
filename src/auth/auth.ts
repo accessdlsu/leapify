@@ -1,4 +1,4 @@
-import { betterAuth } from 'better-auth'
+import { betterAuth } from 'better-auth/minimal'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { bearer } from 'better-auth/plugins'
 import { count } from 'drizzle-orm'
@@ -130,4 +130,4 @@ export function createAuth(env: LeapifyBindings) {
   })
 }
 
-export type Auth = ReturnType<typeof createAuth>
+export type { Auth } from 'better-auth/types'
