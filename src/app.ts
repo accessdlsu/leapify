@@ -13,6 +13,7 @@ import {
   TURNSTILE_VERIFY_PATH,
 } from './lib/middleware/turnstile-challenge'
 import { serviceUnavailable } from './lib/errors'
+import { resolveAllowedOrigins } from './lib/resolve-origins'
 import { createAuth } from './auth/auth'
 import { authMiddleware, adminMiddleware } from './auth/middleware'
 import { healthRoute } from './routes/health'
@@ -60,8 +61,12 @@ export function createApp(options: LeapifyAppOptions = {}): Hono<LeapifyEnv> {
 
   // Better Auth HTTP handler — OAuth redirects, callbacks, session, token endpoints.
   // Mounted BEFORE the maintenance check so auth is always reachable.
-  app.on(['POST', 'GET'], '/api/auth/*', (c) => {
-    const auth = createAuth(c.env)
+  app.on(['POST', 'GET'], '/api/auth/*', async (c) => {
+    const resolvedOrigins = await resolveAllowedOrigins(
+      c.env,
+      options.allowedOrigins ?? ['*'],
+    )
+    const auth = createAuth(c.env, resolvedOrigins)
 
     // Ensure cf-connecting-ip is present for Better Auth rate limiting
     const req = c.req.raw

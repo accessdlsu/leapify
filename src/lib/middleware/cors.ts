@@ -1,24 +1,7 @@
 import { cors } from 'hono/cors'
 
 import type { MiddlewareHandler } from 'hono'
-import { createDb } from '../../db'
-import { siteConfig } from '../../db/schema/site-config'
-import { eq } from 'drizzle-orm'
-
-async function getOriginsFromDb(env: {
-  DB: import('@cloudflare/workers-types').D1Database
-}): Promise<string[] | null> {
-  try {
-    const db = createDb(env.DB)
-    const row = await db.query.siteConfig.findFirst({
-      where: eq(siteConfig.key, 'allowed_origins')
-    })
-    if (row) return JSON.parse(row.value) as string[]
-  } catch {
-    /* D1 unavailable — fall through */
-  }
-  return null
-}
+import { resolveAllowedOrigins } from '../resolve-origins'
 
 export function createCorsMiddleware(
   allowedOrigins: string[]
@@ -26,23 +9,7 @@ export function createCorsMiddleware(
   return async (c, next) => {
     const origin = c.req.header('origin')
 
-    // Get dynamic allowed origins from KV if present, fallback to static list
-    const dynamicOriginsJson = (await c.env.KV.get(
-      'config:allowed_origins',
-      'json'
-    )) as string[] | null
-    let currentAllowedOrigins = dynamicOriginsJson ?? allowedOrigins
-    if (!dynamicOriginsJson) {
-      const dbOrigins = await getOriginsFromDb(c.env)
-      if (dbOrigins) {
-        currentAllowedOrigins = dbOrigins
-        await c.env.KV.put(
-          'config:allowed_origins',
-          JSON.stringify(dbOrigins),
-          { expirationTtl: 86400 }
-        )
-      }
-    }
+    const currentAllowedOrigins = await resolveAllowedOrigins(c.env, allowedOrigins)
 
     // Public Image Exemption: Allow any origin for images and skip strict checks.
     if (c.req.path.startsWith('/api/uploads')) {

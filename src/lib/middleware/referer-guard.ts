@@ -1,24 +1,7 @@
 import { createMiddleware } from 'hono/factory'
 import type { LeapifyBindings } from '../../types'
 import { forbidden } from '../errors'
-import { createDb } from '../../db'
-import { siteConfig } from '../../db/schema/site-config'
-import { eq } from 'drizzle-orm'
-
-async function getOriginsFromDb(env: {
-  DB: import('@cloudflare/workers-types').D1Database
-}): Promise<string[] | null> {
-  try {
-    const db = createDb(env.DB)
-    const row = await db.query.siteConfig.findFirst({
-      where: eq(siteConfig.key, 'allowed_origins')
-    })
-    if (row) return JSON.parse(row.value) as string[]
-  } catch {
-    /* D1 unavailable — fall through */
-  }
-  return null
-}
+import { resolveAllowedOrigins } from '../resolve-origins'
 
 /**
  * Referer guard for mutation endpoints (ADR-006, Layer 6).
@@ -44,23 +27,7 @@ export function createRefererGuard(allowedOrigins: string[]) {
     // Skip for operational routes
     if (SKIP_PREFIXES.some((p) => c.req.path.startsWith(p))) return next()
 
-    // Get dynamic allowed origins: KV (fast cache) • D1 (source of truth) • static fallback
-    const dynamicOriginsJson = (await c.env.KV.get(
-      'config:allowed_origins',
-      'json'
-    )) as string[] | null
-    let currentAllowedOrigins = dynamicOriginsJson ?? allowedOrigins
-    if (!dynamicOriginsJson) {
-      const dbOrigins = await getOriginsFromDb(c.env)
-      if (dbOrigins) {
-        currentAllowedOrigins = dbOrigins
-        await c.env.KV.put(
-          'config:allowed_origins',
-          JSON.stringify(dbOrigins),
-          { expirationTtl: 86400 }
-        )
-      }
-    }
+    const currentAllowedOrigins = await resolveAllowedOrigins(c.env, allowedOrigins)
 
     // Wildcard currentAllowedOrigins = dev/library mode, skip enforcement
     if (currentAllowedOrigins.includes('*')) return next()

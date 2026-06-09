@@ -14,6 +14,14 @@ import type { LeapifyBindings } from '../types'
 
 const DLSU_DOMAIN = '@dlsu.edu.ph'
 
+function extractHosts(origins: string[]): string[] {
+  return origins
+    .map(origin => {
+      try { return new URL(origin).host } catch { return null }
+    })
+    .filter((h): h is string => h !== null)
+}
+
 /**
  * Creates a request-scoped Better Auth instance.
  *
@@ -27,15 +35,29 @@ const DLSU_DOMAIN = '@dlsu.edu.ph'
  *  - databaseHooks enforces @dlsu.edu.ph domain server-side
  *  - After successful user creation, upserts a row in our custom `users` table
  *    to carry the application role
+ *  - Dynamic baseURL: derives OAuth callback origin from X-Forwarded-Host,
+ *    enabling same-origin auth for frontend Workers that proxy auth requests.
+ *
+ * @param resolvedOrigins - Allowed origins resolved via the 3-tier lookup
+ *   (KV → D1 → ALLOWED_ORIGINS). Hostnames are extracted from these URLs
+ *   and used as Better Auth's allowedHosts for dynamic baseURL.
  */
-export function createAuth(env: LeapifyBindings) {
+export function createAuth(env: LeapifyBindings, resolvedOrigins?: string[]) {
   const db = createDb(env.DB)
+  const allowedHosts = extractHosts(resolvedOrigins ?? [])
 
   return betterAuth({
-    baseURL: env.BETTER_AUTH_URL,
+    baseURL: allowedHosts.length > 0
+      ? {
+          allowedHosts,
+          fallback: env.BETTER_AUTH_URL,
+          protocol: 'auto',
+        }
+      : env.BETTER_AUTH_URL,
     secret: env.BETTER_AUTH_SECRET,
 
     advanced: {
+      trustedProxyHeaders: allowedHosts.length > 0,
       ipAddress: {
         ipAddressHeaders: ['cf-connecting-ip', 'x-forwarded-for', 'x-real-ip'],
       },
