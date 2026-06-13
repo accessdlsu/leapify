@@ -129,9 +129,8 @@ uploadsRoute.post(
       customMetadata: { uploadedAt: new Date().toISOString() },
     })
 
-    // Construct relative URL (no hostname)
     const url = new URL(c.req.url)
-    url.pathname = `/${key}`
+    url.pathname = `/api/uploads/${key}`
     url.search = ''
 
     return c.json(
