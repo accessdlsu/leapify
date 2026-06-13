@@ -129,14 +129,12 @@ uploadsRoute.post(
       customMetadata: { uploadedAt: new Date().toISOString() },
     })
 
-    const url = new URL(c.req.url)
-    url.pathname = `/api/uploads/${key}`
-    url.search = ''
+    const url = `/api/uploads/${key}`
 
     return c.json(
       {
         data: {
-          url: url.toString(),
+          url,
           key,
           size: file.size,
           contentType,
