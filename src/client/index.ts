@@ -134,18 +134,22 @@ async function buildHeaders(
   return headers;
 }
 
-async function parseResponse<T>(res: Response): Promise<T> {
+async function parseResponse<T>(
+  res: Response,
+  onError?: (code: string, message: string) => void,
+): Promise<T> {
   if (res.status === 204) return undefined as T;
 
   const body = await res.json().catch(() => ({}));
 
-  if (!res.ok) {
-    const err = (body as LeapifyErrorBody)?.error;
-    throw new LeapifyApiError(
-      res.status,
-      err?.code ?? "UNKNOWN",
-      err?.message ?? res.statusText,
-    );
+  const errorBody = (body as LeapifyErrorBody)?.error;
+
+  if (!res.ok || errorBody) {
+    const hasShape = typeof errorBody === "object" && errorBody !== null && typeof (errorBody as Record<string, unknown>).code === "string" && typeof (errorBody as Record<string, unknown>).message === "string";
+    const code = hasShape ? (errorBody as Record<string, unknown>).code as string : "UNKNOWN";
+    const message = hasShape ? (errorBody as Record<string, unknown>).message as string : errorBody !== undefined ? JSON.stringify(errorBody) : res.statusText;
+    onError?.(code, message);
+    throw new LeapifyApiError(res.status, code, message);
   }
 
   return (body as { data: T }).data;
@@ -167,13 +171,18 @@ async function parseResponse<T>(res: Response): Promise<T> {
  *   () => getLeapifyToken(),
  * )
  */
-export function createLeapifyClient(baseUrl: string, getToken?: GetTokenFn) {
+export function createLeapifyClient(
+  baseUrl: string,
+  getToken?: GetTokenFn,
+  options?: { onError?: (code: string, message: string) => void },
+) {
   const base = baseUrl.replace(/\/$/, "");
+  const onError = options?.onError;
 
   async function get<T>(path: string, init?: RequestInit): Promise<T> {
     const headers = await buildHeaders(getToken, init?.headers as Record<string, string>);
     const res = await fetch(`${base}${path}`, { ...init, method: "GET", headers });
-    return parseResponse<T>(res);
+    return parseResponse<T>(res, onError);
   }
 
   async function post<T>(path: string, body?: unknown): Promise<T> {
@@ -183,7 +192,7 @@ export function createLeapifyClient(baseUrl: string, getToken?: GetTokenFn) {
       headers,
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
-    return parseResponse<T>(res);
+    return parseResponse<T>(res, onError);
   }
 
   async function postFormData<T>(path: string, formData: FormData): Promise<T> {
@@ -197,7 +206,7 @@ export function createLeapifyClient(baseUrl: string, getToken?: GetTokenFn) {
       headers,
       body: formData,
     });
-    return parseResponse<T>(res);
+    return parseResponse<T>(res, onError);
   }
 
   async function patch<T>(path: string, body: unknown): Promise<T> {
@@ -207,13 +216,13 @@ export function createLeapifyClient(baseUrl: string, getToken?: GetTokenFn) {
       headers,
       body: JSON.stringify(body),
     });
-    return parseResponse<T>(res);
+    return parseResponse<T>(res, onError);
   }
 
   async function del<T>(path: string): Promise<T> {
     const headers = await buildHeaders(getToken);
     const res = await fetch(`${base}${path}`, { method: "DELETE", headers });
-    return parseResponse<T>(res);
+    return parseResponse<T>(res, onError);
   }
 
   return {
