@@ -28,7 +28,7 @@ const createEventSchema = z.object({
   venue: z.string().optional(),
   dateTime: z.string().optional(),
   price: z.string().optional(),
-  backgroundImageUrl: z.string().url().optional(),
+  backgroundImageUrl: z.string().optional(),
   classCode: z.string().optional(),
   startTime: z.string().optional(),
   endTime: z.string().optional(),
