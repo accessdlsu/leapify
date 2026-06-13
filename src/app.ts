@@ -100,9 +100,16 @@ export function createApp(options: LeapifyAppOptions = {}): Hono<LeapifyEnv> {
     // KV is faster than D1 for this hot-path check — O(1) per request.
     const flag = await c.env.KV.get<boolean>('config:maintenance_mode', 'json')
     if (flag === true) {
-      throw serviceUnavailable(
-        'The site is currently under maintenance. Please check back soon.',
-      )
+      // Allow authenticated requests through so console admins can manage the site.
+      // The auth middleware on each route still validates the token.
+      const hasAuth =
+        !!c.req.header('Authorization') ||
+        c.req.header('Cookie')?.includes('better-auth.session_token=')
+      if (!hasAuth) {
+        throw serviceUnavailable(
+          'The site is currently under maintenance. Please check back soon.',
+        )
+      }
     }
     return next()
   })
