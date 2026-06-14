@@ -14,4 +14,6 @@ export interface LeapifyUser {
   email: string
   name: string
   emailVerified: boolean
+  /** Unix epoch ms when the Better Auth session expires. Used to detect stale cache entries. */
+  sessionExpiresAt: number
 }

@@ -4,11 +4,12 @@ import { createAuth } from './auth'
 import { domainRestricted, unauthorized, forbidden } from '../lib/errors'
 import { createDb } from '../db'
 import { users } from '../db/schema/users'
+import { resolveAllowedOrigins } from '../lib/resolve-origins'
 import type { LeapifyBindings } from '../types'
 import type { LeapifyUser } from './types'
 
 const SESSION_KV_PREFIX = 'auth:session:'
-const SESSION_KV_TTL = 3600 // 1 hour max cache (capped by actual session expiry)
+const SESSION_KV_TTL = 300 // 5 min max cache (capped by actual session expiry)
 
 // Context type augmentation — available in every route handler via c.get('user')
 declare module 'hono' {
@@ -30,7 +31,7 @@ function extractRawToken(c: { req: { header: (k: string) => string | undefined }
   // Cookie-based flow: Better Auth sets this cookie name by default
   const cookie = c.req.header('Cookie') ?? ''
   const match = cookie.match(/(?:^|;\s*)better-auth\.session_token=([^;]+)/)
-  return match?.[1] ? decodeURIComponent(match[1]) : undefined
+  return match?.[1] ? match[1] : undefined
 }
 
 async function resolveUser(
@@ -76,6 +77,7 @@ async function resolveUser(
     email: betterAuthUserEmail,
     name: betterAuthUserName ?? betterAuthUserEmail.split('@')[0],
     emailVerified: betterAuthEmailVerified,
+    sessionExpiresAt: 0, // caller must patch this before caching
   }
 }
 
@@ -92,13 +94,26 @@ export const authMiddleware = createMiddleware<{ Bindings: LeapifyBindings }>(
         'json',
       )
       if (cached) {
-        c.set('user', cached)
-        return next()
+        // Verify the cached session hasn't expired yet (handles natural expiry
+        // even if KV TTL hasn't cleaned up — e.g. due to clock skew or edge
+        // caching). Early revocations (admin deletes session from D1) are
+        // bounded by SESSION_KV_TTL at most.
+        if (cached.sessionExpiresAt > Date.now()) {
+          c.set('user', cached)
+          return next()
+        }
+        // Session expired — clear stale cache entry and fall through to
+        // re-validation.
+        await c.env.KV.delete(`${SESSION_KV_PREFIX}${rawToken}`)
       }
     }
 
     // Slow path: validate session via Better Auth
-    const auth = createAuth(c.env)
+    const fallbackOrigins = c.env.ALLOWED_ORIGINS
+      ? c.env.ALLOWED_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean)
+      : ['*']
+    const resolvedOrigins = await resolveAllowedOrigins(c.env, fallbackOrigins)
+    const auth = createAuth(c.env, resolvedOrigins)
     const session = await auth.api.getSession({ headers: c.req.raw.headers })
 
     if (!session?.user) {
@@ -120,9 +135,12 @@ export const authMiddleware = createMiddleware<{ Bindings: LeapifyBindings }>(
       session.user.emailVerified,
     )
 
-    // Cache in KV, TTL = min(time until session expires, 1 hour)
+    // Attach session expiry before caching
+    const sessionExpiresAt = new Date(session.session.expiresAt).getTime()
+    leapifyUser.sessionExpiresAt = sessionExpiresAt
+
+    // Cache in KV, TTL = min(time until session expires, SESSION_KV_TTL)
     if (rawToken) {
-      const sessionExpiresAt = new Date(session.session.expiresAt).getTime()
       const secondsRemaining = Math.floor((sessionExpiresAt - Date.now()) / 1000)
       const kvTtl = Math.max(1, Math.min(secondsRemaining, SESSION_KV_TTL))
       await c.env.KV.put(

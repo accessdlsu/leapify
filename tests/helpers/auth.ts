@@ -61,6 +61,7 @@ export async function makeTestSession(
     email: `${uid}@dlsu.edu.ph`,
     name: role === 'admin' ? 'Test Admin' : 'Test Student',
     emailVerified: true,
+    sessionExpiresAt: expiresAt.getTime(),
   }
   await kv.put(`${SESSION_KV_PREFIX}${token}`, JSON.stringify(leapifyUser))
 
