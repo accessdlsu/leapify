@@ -88,10 +88,12 @@ export function createApp(options: LeapifyAppOptions = {}): Hono<LeapifyEnv> {
 
   // Maintenance mode check
   app.use('*', async (c, next) => {
-    // Skip for health, auth, and internal routes so operators can still access them
+    // Skip for health, auth, uploads (public images), and internal routes so
+    // operators / frontend-proxied image requests can still get through.
     if (
       c.req.path === '/health' ||
       c.req.path.startsWith('/api/auth') ||
+      c.req.path.startsWith('/api/uploads') ||
       c.req.path.startsWith('/internal')
     ) {
       return next()
