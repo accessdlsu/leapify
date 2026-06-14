@@ -29,8 +29,19 @@ usersRoute.get(
   adminMiddleware,
   async (c) => {
   const db = createDb(c.env.DB);
-  const data = await db.select().from(users);
-  return c.json({ data });
+  const rows = await db
+    .select({
+      id: users.id,
+      betterAuthId: users.betterAuthId,
+      email: users.email,
+      name: users.name,
+      role: users.role,
+      createdAt: users.createdAt,
+      image: authUser.image,
+    })
+    .from(users)
+    .leftJoin(authUser, eq(users.betterAuthId, authUser.id));
+  return c.json({ data: rows });
 });
 
 // PATCH /users/:id/role — admin only, change user role
