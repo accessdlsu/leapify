@@ -53,6 +53,24 @@ function generateSlug(title: string): string {
     .replace(/^-+|-+$/g, '')
 }
 
+async function uniqueSlug(db: ReturnType<typeof createDb>, base: string): Promise<string> {
+  const existing = await db.query.events.findFirst({
+    where: eq(events.slug, base),
+    columns: { id: true },
+  })
+  if (!existing) return base
+
+  // Collision — try base-2, base-3, …
+  for (let i = 2; ; i++) {
+    const candidate = `${base}-${i}`
+    const clash = await db.query.events.findFirst({
+      where: eq(events.slug, candidate),
+      columns: { id: true },
+    })
+    if (!clash) return candidate
+  }
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function serializeEvent(event: any) {
   if (!event) return event
@@ -367,7 +385,7 @@ classesRoute.post(
     const db = createDb(c.env.DB)
     const cache = new CacheService(c.env.KV)
 
-    const slug = generateSlug(body.title)
+    const slug = await uniqueSlug(db, generateSlug(body.title))
 
     const [created] = await db.insert(events).values({ ...body, slug }).returning()
 
