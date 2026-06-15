@@ -44,7 +44,7 @@ export class GFormsService {
 
   // OAuth2 token management
 
-  private async getAccessToken(): Promise<string> {
+  async getAccessToken(): Promise<string> {
     if (this.accessToken && Date.now() < this.tokenExpiresAt) {
       return this.accessToken;
     }

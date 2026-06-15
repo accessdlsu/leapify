@@ -298,6 +298,14 @@ export function createLeapifyClient(
     },
 
     /**
+     * GET /api/classes/:slug/check-form-access — admin only.
+     * Verifies the service account can read the linked Google Form.
+     */
+    checkFormAccess(slug: string): Promise<{ hasAccess: boolean; reason?: string }> {
+      return get<{ hasAccess: boolean; reason?: string }>(`/api/classes/${encodeURIComponent(slug)}/check-form-access`);
+    },
+
+    /**
      * POST /api/classes — admin only.
      * Creates a new class. Auto-generates slug from title.
      */
