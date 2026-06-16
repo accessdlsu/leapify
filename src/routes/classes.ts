@@ -278,55 +278,6 @@ classesRoute.get(
   return c.json({ data: info })
 })
 
-// GET /events/:slug/check-form-access — admin only, verifies service account can read the form
-classesRoute.get(
-  '/:slug/check-form-access',
-  describeRoute({
-    tags: ['Events'],
-    summary: 'Check if service account has access to the linked Google Form',
-    responses: {
-      200: { description: 'Access check result' },
-      400: { description: 'No gformsId set' },
-      404: { description: 'Event not found' },
-    },
-  }),
-  authMiddleware,
-  adminMiddleware,
-  async (c) => {
-  const { slug } = c.req.param()
-  const db = createDb(c.env.DB)
-
-  const event = await db.query.events.findFirst({
-    where: eq(events.slug, slug),
-    columns: { gformsId: true, gformsUrl: true },
-  })
-  if (!event) throw notFound('Event')
-  if (!event.gformsId) return c.json({ data: { hasAccess: false, reason: 'No Google Form linked to this event' } })
-
-  if (!c.env.GFORMS_SERVICE_ACCOUNT_JSON) {
-    return c.json({ data: { hasAccess: false, reason: 'Service account not configured on server' } })
-  }
-
-  try {
-    const gforms = new GFormsService(c.env.GFORMS_SERVICE_ACCOUNT_JSON)
-    // Fetch 1 response — lightweight, just needs read access
-    const token = await gforms.getAccessToken()
-    const res = await fetch(
-      `https://forms.googleapis.com/v1/forms/${event.gformsId}/responses?pageSize=1`,
-      { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8_000) }
-    )
-    if (res.ok || res.status === 404) {
-      return c.json({ data: { hasAccess: true, responseCount: null } })
-    }
-    if (res.status === 403) {
-      return c.json({ data: { hasAccess: false, reason: 'Service account does not have access. Share the form with the service account email.' } })
-    }
-    return c.json({ data: { hasAccess: false, reason: `Google Forms API returned ${res.status}` } })
-  } catch (err: any) {
-    return c.json({ data: { hasAccess: false, reason: err?.message ?? 'Failed to reach Google Forms API' } })
-  }
-})
-
 // POST /events/:slug/reconcile — admin only, corrects slot count for one event
 classesRoute.post(
   '/:slug/reconcile',
