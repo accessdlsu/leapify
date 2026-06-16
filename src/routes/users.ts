@@ -157,6 +157,26 @@ usersRoute.get(
   return c.json({ data: { ...profile, image: auth?.image ?? null } });
 });
 
+// GET /users/duplicates — admin only
+usersRoute.get(
+  "/duplicates",
+  describeRoute({
+    tags: ["Users"],
+    summary: "List students registered to more than one class",
+    responses: {
+      200: { description: "Array of { email, classes[] }" },
+    },
+  }),
+  authMiddleware,
+  adminMiddleware,
+  async (c) => {
+    const db = createDb(c.env.DB);
+    const regsService = new RegistrationsService(db);
+    const dupes = await regsService.getMultiRegistrations();
+    return c.json({ data: dupes });
+  },
+);
+
 // GET /users/me/registration
 usersRoute.get(
   "/me/registration",

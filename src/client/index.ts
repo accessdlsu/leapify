@@ -410,6 +410,14 @@ export function createLeapifyClient(
     },
 
     /**
+     * GET /api/users/duplicates — admin only.
+     * Returns students registered to more than one class.
+     */
+    getDuplicateRegistrations(): Promise<{ email: string; classes: { slug: string; title: string; submittedAt: number }[] }[]> {
+      return get("/api/users/duplicates");
+    },
+
+    /**
      * PATCH /api/users/:id/role — admin only.
      * Changes a user's role.
      */

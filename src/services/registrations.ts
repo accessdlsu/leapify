@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import type { LeapifyDb } from "../db";
 import { registrations } from "../db/schema/registrations";
 import { events } from "../db/schema/classes";
@@ -7,6 +7,11 @@ export interface RegistrationRecord {
   slug: string;
   eventId: string;
   submittedAt: number;
+}
+
+export interface MultiRegistrationEntry {
+  email: string;
+  classes: { slug: string; title: string; submittedAt: number }[];
 }
 
 export class RegistrationsService {
@@ -41,6 +46,37 @@ export class RegistrationsService {
    * Look up whether a student (by email) has registered for any event.
    * Returns the first match with the event slug.
    */
+  async getMultiRegistrations(): Promise<MultiRegistrationEntry[]> {
+    const dupeEmails = await this.db
+      .select({ email: registrations.email })
+      .from(registrations)
+      .groupBy(registrations.email)
+      .having(sql`count(*) > 1`);
+
+    if (dupeEmails.length === 0) return [];
+
+    const emails = dupeEmails.map((r) => r.email);
+    const rows = await this.db
+      .select({
+        email: registrations.email,
+        slug: events.slug,
+        title: events.title,
+        submittedAt: registrations.submittedAt,
+      })
+      .from(registrations)
+      .innerJoin(events, eq(registrations.eventId, events.id))
+      .where(inArray(registrations.email, emails))
+      .orderBy(registrations.email, registrations.submittedAt);
+
+    const byEmail = new Map<string, { slug: string; title: string; submittedAt: number }[]>();
+    for (const row of rows) {
+      if (!byEmail.has(row.email)) byEmail.set(row.email, []);
+      byEmail.get(row.email)!.push({ slug: row.slug, title: row.title, submittedAt: row.submittedAt });
+    }
+
+    return Array.from(byEmail.entries()).map(([email, classes]) => ({ email, classes }));
+  }
+
   async getRegistrationByEmail(
     email: string,
   ): Promise<RegistrationRecord | null> {
