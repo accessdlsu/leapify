@@ -76,34 +76,34 @@ export function createRateLimitMiddleware(config: RateLimitConfig) {
 
 // Pre-configured middlewares per ADR-006 recommended limits
 
-/** GET /events — 60 req/60s per IP */
+/** GET /events — 15000 req/60s per IP */
 export const eventsListRateLimit = createRateLimitMiddleware({
   endpoint: 'events-list',
-  limit: 60,
+  limit: 15000,
   windowSec: 60,
   identifier: 'ip',
 })
 
-/** GET /events/:slug/slots — 120 req/60s per IP */
+/** GET /events/:slug/slots — 15000 req/60s per IP */
 export const eventsSlotsRateLimit = createRateLimitMiddleware({
   endpoint: 'events-slots',
-  limit: 120,
+  limit: 15000,
   windowSec: 60,
   identifier: 'ip',
 })
 
-/** POST /users/me/bookmarks — 10 req/60s per UID (must run after authMiddleware) */
+/** POST /users/me/bookmarks — 15000 req/60s per UID (must run after authMiddleware) */
 export const bookmarksRateLimit = createRateLimitMiddleware({
   endpoint: 'bookmarks',
-  limit: 10,
+  limit: 15000,
   windowSec: 60,
   identifier: 'uid',
 })
 
-/** POST /events (admin) — 20 req/60s per UID (must run after authMiddleware) */
+/** POST /events (admin) — 15000 req/60s per UID (must run after authMiddleware) */
 export const adminEventsRateLimit = createRateLimitMiddleware({
   endpoint: 'admin-events',
-  limit: 20,
+  limit: 15000,
   windowSec: 60,
   identifier: 'uid',
 })
