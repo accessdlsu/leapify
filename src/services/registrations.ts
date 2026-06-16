@@ -1,4 +1,4 @@
-import { eq, inArray, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { LeapifyDb } from "../db";
 import { registrations } from "../db/schema/registrations";
 import { events } from "../db/schema/classes";
@@ -47,15 +47,6 @@ export class RegistrationsService {
    * Returns the first match with the event slug.
    */
   async getMultiRegistrations(): Promise<MultiRegistrationEntry[]> {
-    const dupeEmails = await this.db
-      .select({ email: registrations.email })
-      .from(registrations)
-      .groupBy(registrations.email)
-      .having(sql`count(*) > 1`);
-
-    if (dupeEmails.length === 0) return [];
-
-    const emails = dupeEmails.map((r) => r.email);
     const rows = await this.db
       .select({
         email: registrations.email,
@@ -65,7 +56,6 @@ export class RegistrationsService {
       })
       .from(registrations)
       .innerJoin(events, eq(registrations.eventId, events.id))
-      .where(inArray(registrations.email, emails))
       .orderBy(registrations.email, registrations.submittedAt);
 
     const byEmail = new Map<string, { slug: string; title: string; submittedAt: number }[]>();
@@ -74,7 +64,9 @@ export class RegistrationsService {
       byEmail.get(row.email)!.push({ slug: row.slug, title: row.title, submittedAt: row.submittedAt });
     }
 
-    return Array.from(byEmail.entries()).map(([email, classes]) => ({ email, classes }));
+    return Array.from(byEmail.entries())
+      .filter(([, classes]) => classes.length > 1)
+      .map(([email, classes]) => ({ email, classes }));
   }
 
   async getRegistrationByEmail(
