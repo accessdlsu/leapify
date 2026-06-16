@@ -7,6 +7,8 @@ export interface SlotInfo {
   registered: number
 }
 
+export type AllSlotsResult = Record<string, SlotInfo>
+
 /**
  * Manages real-time slot counts using D1 directly (no KV cache).
  * Google Forms Watch webhook increments the counter.
@@ -17,6 +19,17 @@ export class SlotsService {
   /**
    * Read current slot info from D1.
    */
+  async getAllSlots(): Promise<AllSlotsResult> {
+    const rows = await this.db.query.events.findMany({
+      columns: { slug: true, maxSlots: true, registeredSlots: true },
+    })
+    const result: AllSlotsResult = {}
+    for (const row of rows) {
+      result[row.slug] = { total: row.maxSlots, registered: row.registeredSlots }
+    }
+    return result
+  }
+
   async getSlots(slug: string): Promise<SlotInfo | null> {
     const event = await this.db.query.events.findFirst({
       where: eq(events.slug, slug),

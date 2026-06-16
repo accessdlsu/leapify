@@ -285,6 +285,10 @@ export function createLeapifyClient(
      * Returns real-time slot availability. CF edge caches this for 5 seconds.
      * Poll every 8–10 seconds on class detail pages.
      */
+    getAllSlots(): Promise<Record<string, SlotInfo>> {
+      return get<Record<string, SlotInfo>>('/api/classes/slots');
+    },
+
     getSlots(slug: string): Promise<SlotInfo> {
       return get<SlotInfo>(`/api/classes/${encodeURIComponent(slug)}/slots`);
     },

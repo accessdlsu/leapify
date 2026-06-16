@@ -252,6 +252,26 @@ classesRoute.get(
   return c.json({ data: serializeEvent(rest) })
 })
 
+// GET /slots — all events slot availability in one shot
+classesRoute.get(
+  '/slots',
+  describeRoute({
+    tags: ['Events'],
+    summary: 'Get slot availability for all events',
+    responses: {
+      200: { description: 'Map of slug → SlotInfo' },
+    },
+  }),
+  eventsSlotsRateLimit,
+  async (c) => {
+    const db = createDb(c.env.DB)
+    const slotsService = new SlotsService(db)
+    const all = await slotsService.getAllSlots()
+    c.header('Cache-Control', 'public, max-age=3, stale-while-revalidate=3')
+    return c.json({ data: all })
+  },
+)
+
 // GET /events/:slug/slots — real-time, CF Cache 5s
 classesRoute.get(
   '/:slug/slots',
