@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 import type { LeapifyDb } from "../db";
 import { registrations } from "../db/schema/registrations";
 import { events } from "../db/schema/classes";
@@ -56,7 +56,7 @@ export class RegistrationsService {
       })
       .from(registrations)
       .innerJoin(events, eq(registrations.eventId, events.id))
-      .orderBy(registrations.email, registrations.submittedAt);
+      .orderBy(asc(registrations.email), asc(registrations.submittedAt));
 
     const byEmail = new Map<string, { slug: string; title: string; submittedAt: number }[]>();
     for (const row of rows) {

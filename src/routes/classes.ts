@@ -224,6 +224,26 @@ classesRoute.get(
   return c.json({ data: serializeEvents(data) })
 })
 
+// GET /slots — all events slot availability in one shot
+classesRoute.get(
+  '/slots',
+  describeRoute({
+    tags: ['Events'],
+    summary: 'Get slot availability for all events',
+    responses: {
+      200: { description: 'Map of slug → SlotInfo' },
+    },
+  }),
+  eventsSlotsRateLimit,
+  async (c) => {
+    const db = createDb(c.env.DB)
+    const slotsService = new SlotsService(db)
+    const all = await slotsService.getAllSlots()
+    c.header('Cache-Control', 'public, max-age=3, stale-while-revalidate=3')
+    return c.json({ data: all })
+  },
+)
+
 // GET /events/:slug
 classesRoute.get(
   '/:slug',
@@ -251,26 +271,6 @@ classesRoute.get(
   const { registeredSlots: _, ...rest } = event
   return c.json({ data: serializeEvent(rest) })
 })
-
-// GET /slots — all events slot availability in one shot
-classesRoute.get(
-  '/slots',
-  describeRoute({
-    tags: ['Events'],
-    summary: 'Get slot availability for all events',
-    responses: {
-      200: { description: 'Map of slug → SlotInfo' },
-    },
-  }),
-  eventsSlotsRateLimit,
-  async (c) => {
-    const db = createDb(c.env.DB)
-    const slotsService = new SlotsService(db)
-    const all = await slotsService.getAllSlots()
-    c.header('Cache-Control', 'public, max-age=3, stale-while-revalidate=3')
-    return c.json({ data: all })
-  },
-)
 
 // GET /events/:slug/slots — real-time, CF Cache 5s
 classesRoute.get(
@@ -428,7 +428,11 @@ classesRoute.patch(
   adminMiddleware,
   async (c) => {
   const { slug } = c.req.param()
-  const body = await c.req.json<Partial<z.infer<typeof createEventSchema>>>()
+  const raw = await c.req.json<Partial<z.infer<typeof createEventSchema>>>()
+  // Normalize empty strings to null for nullable FK/optional columns
+  const body = Object.fromEntries(
+    Object.entries(raw).map(([k, v]) => [k, v === '' ? null : v])
+  ) as typeof raw
   const db = createDb(c.env.DB)
   const cache = new CacheService(c.env.KV)
 
