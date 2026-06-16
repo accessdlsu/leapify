@@ -356,9 +356,24 @@ classesRoute.post(
   if (!event.gformsId) return c.json({ error: 'No gformsId set for this event' }, 400)
 
   try {
-    const googleCount = await gforms.getExactResponseCount(event.gformsId)
+    const responses = await gforms.getAllResponses(event.gformsId)
+    const googleCount = responses.length
     await slots.correctCount(slug, googleCount)
-    return c.json({ data: { registeredSlots: googleCount } })
+
+    const seen = new Map<string, string>()
+    for (const r of responses) {
+      if (r.respondentEmail) {
+        const existing = seen.get(r.respondentEmail)
+        if (!existing || r.lastSubmittedTime > existing) {
+          seen.set(r.respondentEmail, r.lastSubmittedTime)
+        }
+      }
+    }
+    const respondents = Array.from(seen.entries())
+      .map(([email, submittedAt]) => ({ email, submittedAt }))
+      .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
+
+    return c.json({ data: { registeredSlots: googleCount, respondents } })
   } catch (err: any) {
     const message = err?.message ?? 'Failed to fetch from Google Forms API'
     return c.json({ error: { code: 'GFORMS_API_ERROR', message } }, 502)
