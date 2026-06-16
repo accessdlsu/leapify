@@ -436,14 +436,9 @@ classesRoute.patch(
   const db = createDb(c.env.DB)
   const cache = new CacheService(c.env.KV)
 
-  let newSlug: string | undefined
-  if (body.title) {
-    newSlug = generateSlug(body.title)
-  }
-
   const [updated] = await db
     .update(events)
-    .set(newSlug ? { ...body, slug: newSlug } : body)
+    .set(body)
     .where(eq(events.slug, slug))
     .returning()
 
