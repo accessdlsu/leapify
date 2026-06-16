@@ -5,6 +5,7 @@ import { events } from "../db/schema/classes";
 import { CacheService } from "../services/cache";
 import { GFormsService } from "../services/gforms";
 import { SlotsService } from "../services/slots";
+import { RegistrationsService } from "../services/registrations";
 
 const LOCK_KEY = "cron:reconcile-slots:lock";
 const LOCK_TTL = 300; // 5 minutes
@@ -14,6 +15,7 @@ const LOCK_TTL = 300; // 5 minutes
  *
  * Compares D1 registered_slots against actual Google Forms response counts.
  * Corrects any drift caused by missed webhook notifications.
+ * Also upserts all respondent emails into the registrations table (backup sync).
  * Uses a distributed lock (KV) to ensure only one instance runs.
  */
 export async function reconcileSlots(env: LeapifyBindings): Promise<void> {
@@ -21,6 +23,7 @@ export async function reconcileSlots(env: LeapifyBindings): Promise<void> {
   const cache = new CacheService(env.KV);
   const gforms = new GFormsService(env.GFORMS_SERVICE_ACCOUNT_JSON);
   const slots = new SlotsService(db);
+  const regs = new RegistrationsService(db);
 
   // Distributed lock
   const lock = await cache.get<string>(LOCK_KEY);
@@ -41,9 +44,11 @@ export async function reconcileSlots(env: LeapifyBindings): Promise<void> {
 
     for (const event of eventsWithForms) {
       try {
-        const googleCount = await gforms.getExactResponseCount(event.gformsId!);
+        const responses = await gforms.getAllResponses(event.gformsId!);
+        const googleCount = responses.length;
         const localCount = event.registeredSlots;
 
+        // Correct slot drift
         if (googleCount !== localCount) {
           console.warn(
             `[reconcile-slots] Drift on "${event.slug}": local=${localCount}, google=${googleCount}`,
@@ -51,6 +56,15 @@ export async function reconcileSlots(env: LeapifyBindings): Promise<void> {
           await slots.correctCount(event.slug, googleCount);
           corrected++;
         }
+
+        // Sync registrations table (catches any emails missed by webhook)
+        const respondents = responses
+          .filter((r) => r.respondentEmail)
+          .map((r) => ({
+            email: r.respondentEmail!,
+            submittedAt: Math.floor(new Date(r.createTime).getTime() / 1000),
+          }));
+        await regs.upsertRespondents(event.id, respondents);
       } catch (err) {
         // Don't let one form failure abort the whole reconciliation
         console.error(`[reconcile-slots] Error checking "${event.slug}":`, err);

@@ -10,6 +10,7 @@ import { events } from "../db/schema/classes";
 import { authMiddleware, adminMiddleware, optionalAuthMiddleware } from "../auth/middleware";
 import { notFound, badRequest } from "../lib/errors";
 import { bookmarksRateLimit } from "../lib/middleware/rate-limit";
+import { RegistrationsService } from "../services/registrations";
 
 const VALID_ROLES: UserRole[] = ["student", "admin", "super_admin"];
 
@@ -154,6 +155,28 @@ usersRoute.get(
   });
 
   return c.json({ data: { ...profile, image: auth?.image ?? null } });
+});
+
+// GET /users/me/registration
+usersRoute.get(
+  "/me/registration",
+  describeRoute({
+    tags: ["Users"],
+    summary: "Get current user's registration",
+    responses: {
+      200: { description: "Registration record or null" },
+    },
+  }),
+  optionalAuthMiddleware,
+  async (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ data: null });
+
+  const db = createDb(c.env.DB);
+  const regsService = new RegistrationsService(db);
+  const registration = await regsService.getRegistrationByEmail(user.email);
+
+  return c.json({ data: registration });
 });
 
 // GET /users/me/bookmarks

@@ -5,6 +5,8 @@ import type { LeapifyEnv } from "../../types";
 import { createDb } from "../../db";
 import { events } from "../../db/schema/classes";
 import { SlotsService } from "../../services/slots";
+import { GFormsService } from "../../services/gforms";
+import { RegistrationsService } from "../../services/registrations";
 import { internalMiddleware } from "../../auth/middleware";
 
 export const gformsWebhookRoute = new Hono<LeapifyEnv>();
@@ -14,7 +16,8 @@ export const gformsWebhookRoute = new Hono<LeapifyEnv>();
  *
  * Receives Google Forms Watch push notifications.
  * Each notification means one student submitted the form.
- * We increment the local D1 counter and update KV — no Google API call made.
+ * We increment the local D1 counter and fetch+upsert respondent emails
+ * into the registrations table for near-instant "has registered" checks.
  *
  * Security:
  *   1. X-Internal-Secret header (internalMiddleware) — prevents external access
@@ -25,7 +28,7 @@ gformsWebhookRoute.post(
   describeRoute({
     tags: ["Internal"],
     summary: "Google Forms webhook receiver",
-    description: "Receives Google Forms Watch push notifications and increments slot counters.",
+    description: "Receives Google Forms Watch push notifications, increments slot counters, and syncs registrations.",
     responses: {
       200: { description: "Notification processed" },
       400: { description: "Invalid payload" },
@@ -63,7 +66,7 @@ gformsWebhookRoute.post(
 
   const event = await db.query.events.findFirst({
     where: eq(events.gformsId, formId),
-    columns: { slug: true, maxSlots: true, registeredSlots: true },
+    columns: { id: true, slug: true, maxSlots: true, registeredSlots: true },
   });
 
   if (!event) {
@@ -71,12 +74,33 @@ gformsWebhookRoute.post(
     return c.json({ ok: true });
   }
 
+  // Increment slot counter
   const slotsService = new SlotsService(db);
   const updated = await slotsService.increment(event.slug);
-
   console.log(
     `[gforms-webhook] Incremented "${event.slug}": ${updated?.registered}/${updated?.total}`,
   );
+
+  // Fetch all respondents and upsert into registrations table (near-instant registration tracking)
+  try {
+    const gforms = new GFormsService(c.env.GFORMS_SERVICE_ACCOUNT_JSON);
+    const responses = await gforms.getAllResponses(formId);
+    const respondents = responses
+      .filter((r) => r.respondentEmail)
+      .map((r) => ({
+        email: r.respondentEmail!,
+        submittedAt: Math.floor(new Date(r.createTime).getTime() / 1000),
+      }));
+
+    const regsService = new RegistrationsService(db);
+    await regsService.upsertRespondents(event.id, respondents);
+    console.log(
+      `[gforms-webhook] Upserted ${respondents.length} registrations for "${event.slug}"`,
+    );
+  } catch (err) {
+    // Don't fail the webhook if registration sync fails — slot count already updated
+    console.error(`[gforms-webhook] Registration sync failed for "${event.slug}":`, err);
+  }
 
   return c.json({ ok: true });
 });
