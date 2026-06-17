@@ -413,7 +413,7 @@ export function createLeapifyClient(
      * GET /api/users/duplicates — admin only.
      * Returns students registered to more than one class.
      */
-    getDuplicateRegistrations(): Promise<{ email: string; classes: { slug: string; title: string; submittedAt: number }[] }[]> {
+    getDuplicateRegistrations(): Promise<{ email: string; classes: { slug: string; title: string; classCode: string | null; submittedAt: number }[] }[]> {
       return get("/api/users/duplicates");
     },
 

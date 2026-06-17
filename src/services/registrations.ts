@@ -11,7 +11,7 @@ export interface RegistrationRecord {
 
 export interface MultiRegistrationEntry {
   email: string;
-  classes: { slug: string; title: string; submittedAt: number }[];
+  classes: { slug: string; title: string; classCode: string | null; submittedAt: number }[];
 }
 
 export class RegistrationsService {
@@ -52,16 +52,17 @@ export class RegistrationsService {
         email: registrations.email,
         slug: events.slug,
         title: events.title,
+        classCode: events.classCode,
         submittedAt: registrations.submittedAt,
       })
       .from(registrations)
       .innerJoin(events, eq(registrations.eventId, events.id))
       .orderBy(asc(registrations.email), asc(registrations.submittedAt));
 
-    const byEmail = new Map<string, { slug: string; title: string; submittedAt: number }[]>();
+    const byEmail = new Map<string, { slug: string; title: string; classCode: string | null; submittedAt: number }[]>();
     for (const row of rows) {
       if (!byEmail.has(row.email)) byEmail.set(row.email, []);
-      byEmail.get(row.email)!.push({ slug: row.slug, title: row.title, submittedAt: row.submittedAt });
+      byEmail.get(row.email)!.push({ slug: row.slug, title: row.title, classCode: row.classCode, submittedAt: row.submittedAt });
     }
 
     return Array.from(byEmail.entries())
