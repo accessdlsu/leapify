@@ -1,4 +1,4 @@
-import { eq, asc } from "drizzle-orm";
+import { and, eq, asc } from "drizzle-orm";
 import type { LeapifyDb } from "../db";
 import { registrations } from "../db/schema/registrations";
 import { events } from "../db/schema/classes";
@@ -39,6 +39,49 @@ export class RegistrationsService {
         .onConflictDoNothing({
           target: [registrations.eventId, registrations.email],
         });
+    }
+  }
+
+  /**
+   * Full two-way sync of respondents for an event.
+   * Called by reconcile (cron + admin endpoint).
+   * Deletes rows whose email is no longer in the incoming set, then insert-or-ignores the rest.
+   */
+  async syncRespondents(
+    eventId: string,
+    respondents: { email: string; submittedAt: number }[],
+  ): Promise<void> {
+    // Fetch current emails from D1 (1 param, no limit)
+    const existing = await this.db
+      .select({ email: registrations.email })
+      .from(registrations)
+      .where(eq(registrations.eventId, eventId));
+
+    const existingSet = new Set(existing.map((r) => r.email));
+    const incomingSet = new Set(respondents.map((r) => r.email));
+
+    const stmts = [
+      // Delete rows no longer in Google Forms (2 params each)
+      ...[...existingSet]
+        .filter((email) => !incomingSet.has(email))
+        .map((email) =>
+          this.db
+            .delete(registrations)
+            .where(and(eq(registrations.eventId, eventId), eq(registrations.email, email))),
+        ),
+      // Insert new respondents
+      ...respondents
+        .filter((r) => !existingSet.has(r.email))
+        .map((r) =>
+          this.db
+            .insert(registrations)
+            .values({ eventId, email: r.email, submittedAt: r.submittedAt })
+            .onConflictDoNothing({ target: [registrations.eventId, registrations.email] }),
+        ),
+    ];
+
+    if (stmts.length > 0) {
+      await this.db.batch(stmts as [typeof stmts[0], ...typeof stmts]);
     }
   }
 
