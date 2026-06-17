@@ -35,6 +35,7 @@ const createEventSchema = z.object({
   endTime: z.string().optional(),
   registrationClosesAt: z.number().optional(),
   isSpotlight: z.boolean().default(false),
+  registrationEnabled: z.boolean().default(true),
   maxSlots: z.number().int().min(0).default(0),
   gformsId: z.string().optional(),
   gformsUrl: z.string().url().optional(),

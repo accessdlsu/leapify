@@ -27,6 +27,7 @@ export const events = sqliteTable(
     endTime: text("end_time"), // end time string
 
     isSpotlight: integer("is_spotlight", { mode: "boolean" }).notNull().default(false),
+    registrationEnabled: integer("registration_enabled", { mode: "boolean" }).notNull().default(true),
 
     // Slot tracking (local counter — NOT polled from Google Forms)
     maxSlots: integer("max_slots").notNull().default(0),

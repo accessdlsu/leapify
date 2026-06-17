@@ -67,6 +67,7 @@ export interface LeapEvent {
   startTime: string | null;
   endTime: string | null;
   isSpotlight: boolean;
+  registrationEnabled: boolean;
   maxSlots: number;
   registeredSlots: number;
   gformsUrl: string | null;
@@ -178,6 +179,7 @@ export interface CreateEventBody {
   startTime?: string;
   endTime?: string;
   isSpotlight?: boolean;
+  registrationEnabled?: boolean;
   maxSlots?: number;
   gformsId?: string;
   gformsUrl?: string;

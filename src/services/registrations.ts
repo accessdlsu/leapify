@@ -130,4 +130,19 @@ export class RegistrationsService {
 
     return row;
   }
+
+  async getRegistrationsByEmail(
+    email: string,
+  ): Promise<RegistrationRecord[]> {
+    return this.db
+      .select({
+        slug: events.slug,
+        eventId: registrations.eventId,
+        submittedAt: registrations.submittedAt,
+      })
+      .from(registrations)
+      .innerJoin(events, eq(registrations.eventId, events.id))
+      .where(eq(registrations.email, email))
+      .orderBy(asc(registrations.submittedAt));
+  }
 }

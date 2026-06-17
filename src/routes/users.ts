@@ -199,6 +199,28 @@ usersRoute.get(
   return c.json({ data: registration });
 });
 
+// GET /users/me/registrations
+usersRoute.get(
+  "/me/registrations",
+  describeRoute({
+    tags: ["Users"],
+    summary: "Get all of current user's registrations",
+    responses: {
+      200: { description: "Array of registration records" },
+    },
+  }),
+  optionalAuthMiddleware,
+  async (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ data: [] });
+
+  const db = createDb(c.env.DB);
+  const regsService = new RegistrationsService(db);
+  const registrations = await regsService.getRegistrationsByEmail(user.email);
+
+  return c.json({ data: registrations });
+});
+
 // GET /users/me/bookmarks
 usersRoute.get(
   "/me/bookmarks",
