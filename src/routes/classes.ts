@@ -8,6 +8,7 @@ import { events } from '../db/schema/classes'
 import { CacheService } from '../services/cache'
 import { SlotsService } from '../services/slots'
 import { GFormsService } from '../services/gforms'
+import { RegistrationsService } from '../services/registrations'
 import { authMiddleware, adminMiddleware } from '../auth/middleware'
 import { notFound } from '../lib/errors'
 import {
@@ -318,10 +319,11 @@ classesRoute.post(
   const db = createDb(c.env.DB)
   const gforms = new GFormsService(c.env.GFORMS_SERVICE_ACCOUNT_JSON)
   const slots = new SlotsService(db)
+  const regs = new RegistrationsService(db)
 
   const event = await db.query.events.findFirst({
     where: eq(events.slug, slug),
-    columns: { gformsId: true },
+    columns: { id: true, gformsId: true },
   })
   if (!event) throw notFound('Event')
   if (!event.gformsId) return c.json({ error: 'No gformsId set for this event' }, 400)
@@ -331,6 +333,7 @@ classesRoute.post(
     const googleCount = responses.length
     await slots.correctCount(slug, googleCount)
 
+    // Deduplicate by email, keeping the latest submission
     const seen = new Map<string, string>()
     for (const r of responses) {
       if (r.respondentEmail) {
@@ -340,9 +343,19 @@ classesRoute.post(
         }
       }
     }
+
     const respondents = Array.from(seen.entries())
       .map(([email, submittedAt]) => ({ email, submittedAt }))
       .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
+
+    // Sync registrations table: insert new, delete removed
+    await regs.syncRespondents(
+      event.id,
+      respondents.map((r) => ({
+        email: r.email,
+        submittedAt: Math.floor(new Date(r.submittedAt).getTime() / 1000),
+      })),
+    )
 
     return c.json({ data: { registeredSlots: googleCount, respondents } })
   } catch (err: any) {

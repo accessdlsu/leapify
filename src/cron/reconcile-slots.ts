@@ -1,4 +1,5 @@
 import { isNotNull } from "drizzle-orm";
+import type { EventStatus } from "../db/schema/classes";
 import type { LeapifyBindings } from "../types";
 import { createDb } from "../db";
 import { events } from "../db/schema/classes";
@@ -15,7 +16,7 @@ const LOCK_TTL = 300; // 5 minutes
  *
  * Compares D1 registered_slots against actual Google Forms response counts.
  * Corrects any drift caused by missed webhook notifications.
- * Also upserts all respondent emails into the registrations table (backup sync).
+ * Also fully syncs respondent emails into the registrations table (backup sync).
  * Uses a distributed lock (KV) to ensure only one instance runs.
  */
 export async function reconcileSlots(env: LeapifyBindings): Promise<void> {
@@ -33,13 +34,23 @@ export async function reconcileSlots(env: LeapifyBindings): Promise<void> {
   }
   await cache.set(LOCK_KEY, "1", LOCK_TTL);
 
+  const STATUS_PRIORITY: Record<EventStatus, number> = {
+    published: 0,
+    queued: 1,
+    draft: 2,
+    ended: 3,
+    cancelled: 4,
+  };
+
   try {
-    // Fetch all published events with a Google Form
-    const publishedEvents = await db.query.events.findMany({
+    // Fetch all events with a Google Form, regardless of status
+    const allEvents = await db.query.events.findMany({
       where: isNotNull(events.gformsId),
-      columns: { id: true, slug: true, gformsId: true, registeredSlots: true },
+      columns: { id: true, slug: true, gformsId: true, registeredSlots: true, status: true },
     });
-    const eventsWithForms = publishedEvents.filter((e) => e.gformsId);
+    const eventsWithForms = allEvents
+      .filter((e) => e.gformsId)
+      .sort((a, b) => STATUS_PRIORITY[a.status] - STATUS_PRIORITY[b.status]);
     let corrected = 0;
 
     for (const event of eventsWithForms) {
@@ -64,7 +75,7 @@ export async function reconcileSlots(env: LeapifyBindings): Promise<void> {
             email: r.respondentEmail!,
             submittedAt: Math.floor(new Date(r.createTime).getTime() / 1000),
           }));
-        await regs.upsertRespondents(event.id, respondents);
+        await regs.syncRespondents(event.id, respondents);
       } catch (err) {
         // Don't let one form failure abort the whole reconciliation
         console.error(`[reconcile-slots] Error checking "${event.slug}":`, err);
