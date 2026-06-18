@@ -8,7 +8,8 @@ import { GFormsService } from "../services/gforms";
 import { SlotsService } from "../services/slots";
 import { RegistrationsService } from "../services/registrations";
 
-const LOCK_KEY = "cron:reconcile-slots:lock";
+export const RECONCILE_LOCK_KEY = "cron:reconcile-slots:lock";
+export const RECONCILE_LAST_RUN_KEY = "cron:reconcile-slots:last-run";
 const LOCK_TTL = 300; // 5 minutes
 
 /**
@@ -27,12 +28,12 @@ export async function reconcileSlots(env: LeapifyBindings): Promise<void> {
   const regs = new RegistrationsService(db);
 
   // Distributed lock
-  const lock = await cache.get<string>(LOCK_KEY);
+  const lock = await cache.get<string>(RECONCILE_LOCK_KEY);
   if (lock) {
     console.log("[reconcile-slots] Lock held, skipping.");
     return;
   }
-  await cache.set(LOCK_KEY, "1", LOCK_TTL);
+  await cache.set(RECONCILE_LOCK_KEY, "1", LOCK_TTL);
 
   const STATUS_PRIORITY: Record<EventStatus, number> = {
     published: 0,
@@ -86,6 +87,7 @@ export async function reconcileSlots(env: LeapifyBindings): Promise<void> {
       `[reconcile-slots] Checked ${eventsWithForms.length} events, corrected ${corrected}.`,
     );
   } finally {
-    await cache.del(LOCK_KEY);
+    await cache.del(RECONCILE_LOCK_KEY);
+    await cache.set(RECONCILE_LAST_RUN_KEY, Date.now().toString());
   }
 }

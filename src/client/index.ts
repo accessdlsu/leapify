@@ -303,6 +303,23 @@ export function createLeapifyClient(
     },
 
     /**
+     * GET /api/classes/reconcile/status — admin only.
+     * Returns whether a slot reconciliation cron is currently running and when the last one completed.
+     */
+    getSlotsStatus(): Promise<{ inProgress: boolean; lastReconcileAt: number | null }> {
+      return get<{ inProgress: boolean; lastReconcileAt: number | null }>('/api/classes/reconcile/status');
+    },
+
+    /**
+     * POST /api/classes/reconcile — admin only.
+     * Triggers a full slot reconciliation across all events (same as the cron job).
+     * Throws with code RECONCILE_IN_PROGRESS (409) if already running.
+     */
+    reconcileAll(): Promise<{ ok: boolean }> {
+      return post<{ ok: boolean }>('/api/classes/reconcile');
+    },
+
+    /**
      * POST /api/classes — admin only.
      * Creates a new class. Auto-generates slug from title.
      */

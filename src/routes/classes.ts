@@ -11,6 +11,7 @@ import { GFormsService } from '../services/gforms'
 import { RegistrationsService } from '../services/registrations'
 import { authMiddleware, adminMiddleware } from '../auth/middleware'
 import { notFound } from '../lib/errors'
+import { reconcileSlots, RECONCILE_LOCK_KEY, RECONCILE_LAST_RUN_KEY } from '../cron/reconcile-slots'
 import {
   eventsListRateLimit,
   eventsSlotsRateLimit,
@@ -244,6 +245,57 @@ classesRoute.get(
     const all = await slotsService.getAllSlots()
     c.header('Cache-Control', 'public, max-age=3, stale-while-revalidate=3')
     return c.json({ data: all })
+  },
+)
+
+// GET /reconcile/status — admin only, returns last cron run time and in-progress status
+classesRoute.get(
+  '/reconcile/status',
+  describeRoute({
+    tags: ['Events'],
+    summary: 'Get slot reconciliation status',
+    responses: {
+      200: { description: 'Reconcile status' },
+    },
+  }),
+  authMiddleware,
+  adminMiddleware,
+  async (c) => {
+    const cache = new CacheService(c.env.KV)
+    const [lock, lastRun] = await Promise.all([
+      cache.get<string>(RECONCILE_LOCK_KEY),
+      cache.get<string>(RECONCILE_LAST_RUN_KEY),
+    ])
+    return c.json({
+      data: {
+        inProgress: lock !== null,
+        lastReconcileAt: lastRun ? parseInt(lastRun, 10) : null,
+      },
+    })
+  },
+)
+
+// POST /reconcile — admin only, triggers full slot reconcile across all events
+classesRoute.post(
+  '/reconcile',
+  describeRoute({
+    tags: ['Events'],
+    summary: 'Trigger full slot reconciliation',
+    responses: {
+      200: { description: 'Reconciliation complete' },
+      409: { description: 'Reconciliation already in progress' },
+    },
+  }),
+  authMiddleware,
+  adminMiddleware,
+  async (c) => {
+    const cache = new CacheService(c.env.KV)
+    const lock = await cache.get<string>(RECONCILE_LOCK_KEY)
+    if (lock) {
+      return c.json({ error: { code: 'RECONCILE_IN_PROGRESS', message: 'Reconciliation is already in progress.' } }, 409)
+    }
+    await reconcileSlots(c.env)
+    return c.json({ data: { ok: true } })
   },
 )
 
