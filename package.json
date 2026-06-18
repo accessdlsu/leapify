@@ -1,6 +1,6 @@
 {
   "name": "@access-dlsu/leapify",
-  "version": "0.260618.1",
+  "version": "0.260618.3",
   "description": "DLSU CSO LEAP backend (run as a standalone Cloudflare Worker or install as an npm module)",
   "type": "module",
   "main": "./dist/index.cjs",

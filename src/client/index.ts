@@ -526,6 +526,39 @@ export function createLeapifyClient(
       return postFormData("/api/uploads", formData);
     },
 
+    // ── Email ───────────────────────────────────────────────────────────────
+
+    /**
+     * POST /api/email/test — admin only.
+     * Sends a test email to verify email configuration.
+     */
+    sendTestEmail(to: string): Promise<{ provider: string; id: string }> {
+      return post("/api/email/test", { to });
+    },
+
+    /**
+     * POST /api/email/:slug/send-reminders — admin only.
+     * Manually triggers reminder emails for a specific event.
+     */
+    sendEventReminders(slug: string): Promise<{ sent: number; total: number }> {
+      return post(`/api/email/${encodeURIComponent(slug)}/send-reminders`);
+    },
+
+    /**
+     * POST /api/email/:slug/send — admin only.
+     * Sends a custom email to all registrants of a specific event.
+     */
+    sendCustomEmail(
+      slug: string,
+      subject: string,
+      html: string,
+    ): Promise<{ sent: number; total: number }> {
+      return post(`/api/email/${encodeURIComponent(slug)}/send`, {
+        subject,
+        html,
+      });
+    },
+
     // ── Health ─────────────────────────────────────────────────────────────
 
     /**

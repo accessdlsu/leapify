@@ -215,6 +215,7 @@ classesRoute.get(
           endTime: true,
           registrationClosesAt: true,
           isSpotlight: true,
+          registrationEnabled: true,
           maxSlots: true,
           gformsUrl: true,
         },

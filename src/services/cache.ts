@@ -1,5 +1,8 @@
 import type { KVNamespace } from '@cloudflare/workers-types'
 
+// Module-level write dedup — prevents thundering herd of concurrent KV PUTs for same key
+const _pendingWrites = new Set<string>()
+
 /**
  * Typed KV cache wrapper with get/set/del and stale-while-revalidate helpers.
  */
@@ -11,9 +14,19 @@ export class CacheService {
   }
 
   async set<T>(key: string, value: T, ttlSeconds?: number): Promise<void> {
-    await this.kv.put(key, JSON.stringify(value), {
-      ...(ttlSeconds ? { expirationTtl: ttlSeconds } : {}),
-    })
+    if (_pendingWrites.has(key)) return  // already writing this key — skip duplicate
+    _pendingWrites.add(key)
+    try {
+      await this.kv.put(key, JSON.stringify(value), {
+        ...(ttlSeconds ? { expirationTtl: ttlSeconds } : {}),
+      })
+    } catch (err: unknown) {
+      // KV write rate limit (429) or transient error — non-fatal, next request will retry
+      const msg = err instanceof Error ? err.message : String(err)
+      if (!msg.includes('429')) console.warn('[Cache] KV set failed:', msg)
+    } finally {
+      _pendingWrites.delete(key)
+    }
   }
 
   async del(key: string): Promise<void> {
