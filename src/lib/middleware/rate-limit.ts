@@ -47,62 +47,44 @@ export function createRateLimitMiddleware(config: RateLimitConfig) {
 
     const key = `rl:${endpoint}:${id}`
 
-    const raw = await c.env.KV.get(key)
-    const count = raw !== null ? parseInt(raw, 10) : 0
+    try {
+      const raw = await c.env.KV.get(key)
+      const count = raw !== null ? parseInt(raw, 10) : 0
 
-    if (count >= limit) {
-      c.header('Retry-After', String(windowSec))
+      if (count >= limit) {
+        c.header('Retry-After', String(windowSec))
+        c.header('X-RateLimit-Limit', String(limit))
+        c.header('X-RateLimit-Remaining', '0')
+        throw tooManyRequests(`Rate limit exceeded. Try again in ${windowSec}s.`)
+      }
+
+      // Increment. On first request (count === 0), set TTL to open the window.
+      // On subsequent requests, preserve the existing TTL by not resetting it.
+      if (count === 0) {
+        await c.env.KV.put(key, '1', { expirationTtl: windowSec })
+      } else {
+        // KV doesn't support atomic increment — we read then write.
+        // Slight over-counting is acceptable; it errs on the side of caution.
+        await c.env.KV.put(key, String(count + 1), { expirationTtl: windowSec })
+      }
+
       c.header('X-RateLimit-Limit', String(limit))
-      c.header('X-RateLimit-Remaining', '0')
-      throw tooManyRequests(`Rate limit exceeded. Try again in ${windowSec}s.`)
+      c.header('X-RateLimit-Remaining', String(limit - count - 1))
+    } catch (err) {
+      // If the thrown error is a LeapifyError (e.g. 429), re-throw it — don't swallow it.
+      if (err instanceof Error && 'statusCode' in err) throw err
+      console.error('[Leapify] Rate limit KV error (failing open):', err)
     }
-
-    // Increment. On first request (count === 0), set TTL to open the window.
-    // On subsequent requests, preserve the existing TTL by not resetting it.
-    if (count === 0) {
-      await c.env.KV.put(key, '1', { expirationTtl: windowSec })
-    } else {
-      // KV doesn't support atomic increment — we read then write.
-      // Slight over-counting is acceptable; it errs on the side of caution.
-      await c.env.KV.put(key, String(count + 1), { expirationTtl: windowSec })
-    }
-
-    c.header('X-RateLimit-Limit', String(limit))
-    c.header('X-RateLimit-Remaining', String(limit - count - 1))
 
     return next()
   })
 }
 
-// Pre-configured middlewares per ADR-006 recommended limits
-
-/** GET /events — 15000 req/60s per IP */
-export const eventsListRateLimit = createRateLimitMiddleware({
-  endpoint: 'events-list',
-  limit: 15000,
-  windowSec: 60,
-  identifier: 'ip',
-})
-
-/** GET /events/:slug/slots — 15000 req/60s per IP */
-export const eventsSlotsRateLimit = createRateLimitMiddleware({
-  endpoint: 'events-slots',
-  limit: 15000,
-  windowSec: 60,
-  identifier: 'ip',
-})
+// Pre-configured middlewares per ADR-006
 
 /** POST /users/me/bookmarks — 15000 req/60s per UID (must run after authMiddleware) */
 export const bookmarksRateLimit = createRateLimitMiddleware({
   endpoint: 'bookmarks',
-  limit: 15000,
-  windowSec: 60,
-  identifier: 'uid',
-})
-
-/** POST /events (admin) — 15000 req/60s per UID (must run after authMiddleware) */
-export const adminEventsRateLimit = createRateLimitMiddleware({
-  endpoint: 'admin-events',
   limit: 15000,
   windowSec: 60,
   identifier: 'uid',

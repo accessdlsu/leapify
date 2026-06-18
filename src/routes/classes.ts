@@ -12,11 +12,7 @@ import { RegistrationsService } from '../services/registrations'
 import { authMiddleware, adminMiddleware } from '../auth/middleware'
 import { notFound } from '../lib/errors'
 import { reconcileSlots, RECONCILE_LOCK_KEY, RECONCILE_LAST_RUN_KEY } from '../cron/reconcile-slots'
-import {
-  eventsListRateLimit,
-  eventsSlotsRateLimit,
-  adminEventsRateLimit,
-} from '../lib/middleware/rate-limit'
+
 
 const EVENTS_LIST_KV_KEY = 'events:list'
 const EVENTS_ETAG_KV_KEY = 'events:etag'
@@ -167,7 +163,6 @@ classesRoute.get(
     summary: 'List published events',
     responses: { 200: { description: 'List of published events with themes' } },
   }),
-  eventsListRateLimit,
   async (c) => {
   const db = createDb(c.env.DB)
   const cache = new CacheService(c.env.KV)
@@ -224,6 +219,7 @@ classesRoute.get(
     EVENTS_LIST_TTL,
   )
 
+  c.header('Cache-Control', 'public, max-age=1, stale-while-revalidate=1')
   c.header('ETag', etag)
   return c.json({ data: serializeEvents(data) })
 })
@@ -238,7 +234,6 @@ classesRoute.get(
       200: { description: 'Map of slug → SlotInfo' },
     },
   }),
-  eventsSlotsRateLimit,
   async (c) => {
     const db = createDb(c.env.DB)
     const slotsService = new SlotsService(db)
@@ -338,7 +333,6 @@ classesRoute.get(
       404: { description: 'Event not found' },
     },
   }),
-  eventsSlotsRateLimit,
   async (c) => {
   const { slug } = c.req.param()
   const db = createDb(c.env.DB)
@@ -431,7 +425,6 @@ classesRoute.post(
   }),
   authMiddleware,
   adminMiddleware,
-  adminEventsRateLimit,
   validator('json', createEventSchema),
   async (c) => {
     const body = c.req.valid('json')

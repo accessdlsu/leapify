@@ -187,27 +187,19 @@ Peer dependencies (`hono`, `drizzle-orm`, `@cloudflare/workers-types`) are **not
 
 **Decision:** Use three Cloudflare cache tiers:
 
-| Tier        | Mechanism              | TTL    | Use Case                        |
-| ----------- | ---------------------- | ------ | ------------------------------- |
-| CF CDN Edge | `Cache-Control` + ETag | 7 days | `GET /events` list (static-ish) |
-| CF KV       | KV `put` with TTL      | 3,600s | Firebase JWT tokens             |
-| CF KV       | KV `put` with TTL      | 5s     | Slot availability per event     |
+| Tier        | Mechanism              | Use Case                    |
+| ----------- | ---------------------- | --------------------------- |
+| CF CDN Edge | `Cache-Control` + ETag | `GET /events` list          |
+| CF KV       | KV `put` with TTL      | Session tokens              |
+| CF KV       | KV `put` with TTL      | Slot availability per event |
 
 ```typescript
-// JWT cache — skip Firebase on subsequent requests
-await kv.put(`auth:token:${uid}`, JSON.stringify(payload), {
-  expirationTtl: 3600,
-})
-const cached = await kv.get(`auth:token:${uid}`, 'json')
-if (cached) return cached
-
-// Events list — 7-day edge cache with ETag revalidation
+// Events list — short-lived edge cache with ETag revalidation
 const etag = generateETag(events)
 if (c.req.header('If-None-Match') === etag) return c.body(null, 304)
-return c.json({ data: events }, 200, {
-  'Cache-Control': 'public, max-age=604800',
-  ETag: etag,
-})
+c.header('Cache-Control', 'public, max-age=1, stale-while-revalidate=1')
+c.header('ETag', etag)
+return c.json({ data: events })
 ```
 
 **Consequences:** D1 reads drop to ~5 QPS on events. Auth cache hit rate >90% under burst load. Survives Firebase outages for cached users.
@@ -336,7 +328,7 @@ Tests live in `/tests`. Global setup (`tests/helpers/setup.ts`) mocks `drizzle-o
 
 | Endpoint                  | Target | Cache                    |
 | ------------------------- | ------ | ------------------------ |
-| `GET /events`             | <50ms  | 7-day CF edge + ETag     |
+| `GET /events`             | <50ms  | CF edge + ETag           |
 | `GET /events/:slug/slots` | <20ms  | 5s KV                    |
 | `GET /users/me`           | <30ms  | Auth KV cache            |
 | `POST /bookmarks`         | <100ms | D1 write                 |
