@@ -147,6 +147,16 @@ export function createApp(options: LeapifyAppOptions = {}): Hono<LeapifyEnv> {
           description: 'DLSU CSO LEAP backend API',
         },
         openapi: '3.1.0',
+        components: {
+          securitySchemes: {
+            bearerAuth: {
+              type: 'http',
+              scheme: 'bearer',
+              description: 'Value of the better-auth.session_token cookie (extract from DevTools → Application → Cookies)',
+            },
+          },
+        },
+        security: [{ bearerAuth: [] }],
       },
     }),
   )

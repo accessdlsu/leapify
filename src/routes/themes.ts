@@ -41,6 +41,7 @@ themesRoute.get(
   describeRoute({
     tags: ['Themes'],
     summary: 'List all themes',
+    security: [],
     responses: { 200: { description: 'List of themes' } },
   }),
   async (c) => {

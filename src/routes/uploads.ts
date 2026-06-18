@@ -29,6 +29,7 @@ uploadsRoute.get(
   describeRoute({
     tags: ['Uploads'],
     summary: 'Serve an image from R2 storage',
+    security: [],
     responses: {
       200: { description: 'Image file' },
       404: { description: 'Image not found' },

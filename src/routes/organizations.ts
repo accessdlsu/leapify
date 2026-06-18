@@ -23,6 +23,7 @@ organizationsRoute.get(
   describeRoute({
     tags: ['Organizations'],
     summary: 'List all organizations',
+    security: [],
     responses: { 200: { description: 'List of organizations' } },
   }),
   async (c) => {

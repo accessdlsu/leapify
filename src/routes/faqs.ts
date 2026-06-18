@@ -27,6 +27,7 @@ faqsRoute.get(
   describeRoute({
     tags: ['FAQs'],
     summary: 'List all active FAQs',
+    security: [],
     responses: { 200: { description: 'List of FAQs' } },
   }),
   async (c) => {

@@ -14,6 +14,7 @@ siteConfigRoute.get(
   describeRoute({
     tags: ['Site Config'],
     summary: 'Get public site configuration',
+    security: [],
     responses: { 200: { description: 'Site configuration values' } },
   }),
   async (c) => {

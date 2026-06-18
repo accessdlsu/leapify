@@ -173,6 +173,7 @@ healthRoute.get(
   describeRoute({
     tags: ['Health'],
     summary: 'Service health check',
+    security: [],
     responses: { 200: { description: 'Health status of configured services' } },
   }),
   async (c) => {

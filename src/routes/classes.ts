@@ -161,6 +161,7 @@ classesRoute.get(
   describeRoute({
     tags: ['Events'],
     summary: 'List published events',
+    security: [],
     responses: { 200: { description: 'List of published events with themes' } },
   }),
   async (c) => {
@@ -230,6 +231,7 @@ classesRoute.get(
   describeRoute({
     tags: ['Events'],
     summary: 'Get slot availability for all events',
+    security: [],
     responses: {
       200: { description: 'Map of slug → SlotInfo' },
     },
@@ -300,6 +302,7 @@ classesRoute.get(
   describeRoute({
     tags: ['Events'],
     summary: 'Get event by slug',
+    security: [],
     responses: {
       200: { description: 'Event details' },
       404: { description: 'Event not found' },
@@ -328,6 +331,7 @@ classesRoute.get(
   describeRoute({
     tags: ['Events'],
     summary: 'Get event slot availability',
+    security: [],
     responses: {
       200: { description: 'Slot availability info' },
       404: { description: 'Event not found' },
