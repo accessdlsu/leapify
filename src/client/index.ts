@@ -433,6 +433,14 @@ export function createLeapifyClient(
       return post<UserProfile>("/api/users/by-email", { email, role });
     },
 
+    /**
+     * GET /api/users/:id/registrations — admin only.
+     * Returns all class registrations for a specific user.
+     */
+    getUserRegistrations(id: string): Promise<{ slug: string; eventId: string; title: string; classCode: string | null; submittedAt: number }[]> {
+      return get(`/api/users/${encodeURIComponent(id)}/registrations`);
+    },
+
     // ── Bookmarks ──────────────────────────────────────────────────────────
 
     /**

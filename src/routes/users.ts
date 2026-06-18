@@ -221,6 +221,30 @@ usersRoute.get(
   return c.json({ data: registrations });
 });
 
+// GET /users/:id/registrations — admin only
+usersRoute.get(
+  "/:id/registrations",
+  describeRoute({
+    tags: ["Users"],
+    summary: "Get all registrations for a specific user (admin)",
+    responses: {
+      200: { description: "Array of registration records" },
+      404: { description: "User not found" },
+    },
+  }),
+  authMiddleware,
+  adminMiddleware,
+  async (c) => {
+    const { id } = c.req.param();
+    const db = createDb(c.env.DB);
+    const [target] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    if (!target) throw notFound("User not found");
+    const regsService = new RegistrationsService(db);
+    const data = await regsService.getRegistrationsByEmail(target.email);
+    return c.json({ data });
+  },
+);
+
 // GET /users/me/bookmarks
 usersRoute.get(
   "/me/bookmarks",

@@ -6,6 +6,8 @@ import { events } from "../db/schema/classes";
 export interface RegistrationRecord {
   slug: string;
   eventId: string;
+  title: string;
+  classCode: string | null;
   submittedAt: number;
 }
 
@@ -120,6 +122,8 @@ export class RegistrationsService {
       .select({
         slug: events.slug,
         eventId: registrations.eventId,
+        title: events.title,
+        classCode: events.classCode,
         submittedAt: registrations.submittedAt,
       })
       .from(registrations)
@@ -138,6 +142,8 @@ export class RegistrationsService {
       .select({
         slug: events.slug,
         eventId: registrations.eventId,
+        title: events.title,
+        classCode: events.classCode,
         submittedAt: registrations.submittedAt,
       })
       .from(registrations)
