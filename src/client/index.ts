@@ -24,6 +24,8 @@ export type {
   Theme,
   Organization,
   SiteConfig,
+  ActiveAnnouncement,
+  AnnouncementLocaleContent,
   ToggleBookmarkResult,
   LeapifyErrorBody,
   UserRole,

@@ -66,6 +66,17 @@ export interface LeapifyEnv {
 /**
  * Known site_config keys with their value types.
  */
+export interface AnnouncementLocaleContent {
+  title: string
+  body: string
+}
+
+export interface ActiveAnnouncement {
+  id: string
+  content: Record<string, AnnouncementLocaleContent> // locale key -> content
+  requiresAck: boolean
+}
+
 export interface SiteConfigMap {
   coming_soon_until: number // unix epoch
   site_ends_at: number // unix epoch
@@ -73,6 +84,9 @@ export interface SiteConfigMap {
   registration_globally_open: boolean
   maintenance_mode: boolean
   allowed_origins: string[] // dynamic CORS allowed origins
+  enhancements_mode: boolean
+  enhancements_until: number // unix epoch
+  active_announcement: ActiveAnnouncement | null
 }
 
 export type SiteConfigKey = keyof SiteConfigMap
