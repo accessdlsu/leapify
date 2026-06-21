@@ -172,6 +172,16 @@ const CREATE_STATEMENTS = [
     "updated_at" integer DEFAULT (unixepoch()) NOT NULL
   )`,
 
+  // App: announcements
+  `CREATE TABLE IF NOT EXISTS "announcements" (
+    "id" text PRIMARY KEY NOT NULL,
+    "content" text NOT NULL,
+    "requires_ack" integer DEFAULT true NOT NULL,
+    "is_active" integer DEFAULT true NOT NULL,
+    "created_at" integer DEFAULT (unixepoch()) NOT NULL,
+    "updated_at" integer DEFAULT (unixepoch()) NOT NULL
+  )`,
+
   // App: site_config
   `CREATE TABLE IF NOT EXISTS "site_config" (
     "key" text PRIMARY KEY NOT NULL,
