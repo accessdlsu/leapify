@@ -24,8 +24,8 @@ export type {
   Theme,
   Organization,
   SiteConfig,
-  ActiveAnnouncement,
-  AnnouncementLocaleContent,
+  Announcement,
+  AnnouncementContent,
   ToggleBookmarkResult,
   LeapifyErrorBody,
   UserRole,
@@ -112,6 +112,7 @@ import type {
   Theme,
   Organization,
   SiteConfig,
+  Announcement,
   ToggleBookmarkResult,
   LeapifyErrorBody,
   CreateEventBody,
@@ -525,6 +526,28 @@ export function createLeapifyClient(
      */
     deleteFaq(id: string): Promise<{ deleted: boolean }> {
       return del<{ deleted: boolean }>(`/api/faqs/${encodeURIComponent(id)}`);
+    },
+
+    // ── Announcements ──────────────────────────────────────────────────────
+
+    getAnnouncements(): Promise<Announcement[]> {
+      return get<Announcement[]>("/api/announcements");
+    },
+
+    getAdminAnnouncements(): Promise<Announcement[]> {
+      return get<Announcement[]>("/api/announcements/admin");
+    },
+
+    createAnnouncement(data: { content: Record<string, { title: string; body: string }>; requiresAck?: boolean; isActive?: boolean }): Promise<Announcement> {
+      return post<Announcement>("/api/announcements", data);
+    },
+
+    updateAnnouncement(id: string, data: Partial<{ content: Record<string, { title: string; body: string }>; requiresAck: boolean; isActive: boolean }>): Promise<Announcement> {
+      return patch<Announcement>(`/api/announcements/${encodeURIComponent(id)}`, data);
+    },
+
+    deleteAnnouncement(id: string): Promise<{ deleted: boolean }> {
+      return del<{ deleted: boolean }>(`/api/announcements/${encodeURIComponent(id)}`);
     },
 
     // ── Uploads ────────────────────────────────────────────────────────────

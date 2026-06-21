@@ -132,15 +132,18 @@ export interface Faq {
  * Use `now` (server unix epoch) for timestamp comparisons to avoid
  * client clock drift.
  */
-export interface AnnouncementLocaleContent {
+export interface AnnouncementContent {
   title: string;
   body: string;
 }
 
-export interface ActiveAnnouncement {
+export interface Announcement {
   id: string;
-  content: Record<string, AnnouncementLocaleContent>;
+  content: Record<string, AnnouncementContent>;
   requiresAck: boolean;
+  isActive: boolean;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface SiteConfig {
@@ -151,7 +154,6 @@ export interface SiteConfig {
   maintenanceMode: boolean;
   enhancementsMode: boolean;
   enhancementsUntil: number | null;
-  activeAnnouncement: ActiveAnnouncement | null;
   allowedOrigins?: string[];
   now: number;
 }

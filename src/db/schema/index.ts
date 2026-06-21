@@ -1,4 +1,5 @@
 export * from './users'
+export * from './announcements'
 export * from './classes'
 export * from './organizations'
 export * from './site-config'

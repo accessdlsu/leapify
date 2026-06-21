@@ -34,7 +34,6 @@ siteConfigRoute.get(
       maintenanceMode: config.maintenance_mode ?? false,
       enhancementsMode: config.enhancements_mode ?? false,
       enhancementsUntil: config.enhancements_until ?? null,
-      activeAnnouncement: config.active_announcement ?? null,
       allowedOrigins: config.allowed_origins ?? null,
       now: Math.floor(Date.now() / 1000)
     }
