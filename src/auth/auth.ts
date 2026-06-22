@@ -1,7 +1,7 @@
 import { betterAuth } from 'better-auth/minimal'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { bearer } from 'better-auth/plugins'
-import { count, eq } from 'drizzle-orm'
+import { count } from 'drizzle-orm'
 import { createDb } from '../db'
 import {
   authUser,
@@ -79,41 +79,12 @@ export function createAuth(env: LeapifyBindings, resolvedOrigins?: string[]) {
       google: {
         clientId: env.GOOGLE_CLIENT_ID,
         clientSecret: env.GOOGLE_CLIENT_SECRET,
-        hd: env.GOOGLE_HD || undefined
+        hd: env.GOOGLE_HD || undefined,
+        overrideUserInfoOnSignIn: true,
       }
     },
 
     databaseHooks: {
-      account: {
-        create: {
-          /**
-           * After OAuth account is created, extract Google's profile picture
-           * from the idToken and update the user's image field.
-           */
-          after: async (account) => {
-            if (account.providerId === 'google' && account.idToken) {
-              try {
-                // Parse JWT payload (no verification needed — it's already verified by Better Auth)
-                const parts = account.idToken.split('.')
-                if (parts.length !== 3) return
-                const decoded = JSON.parse(
-                  atob(parts[1])
-                ) as { picture?: string }
-
-                if (decoded.picture) {
-                  // Update the user's image field with the picture URL from Google
-                  await db
-                    .update(authUser)
-                    .set({ image: decoded.picture })
-                    .where(eq(authUser.id, account.userId))
-                }
-              } catch {
-                // Silently fail — image is optional
-              }
-            }
-          }
-        }
-      },
       user: {
         create: {
           /**

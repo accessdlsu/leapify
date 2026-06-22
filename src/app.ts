@@ -26,6 +26,7 @@ import { reconcileSlotsRoute } from './routes/internal/reconcile-slots'
 import { batchReleaseRoute } from './routes/internal/batch-release'
 import { reminderEmailsRoute } from './routes/internal/reminder-emails'
 import { renewWatchesRoute } from './routes/internal/renew-watches'
+import { backfillImagesRoute } from './routes/internal/backfill-images'
 import { uploadsRoute } from './routes/uploads'
 import { themesRoute } from './routes/themes'
 import { organizationsRoute } from './routes/organizations'
@@ -135,6 +136,7 @@ export function createApp(options: LeapifyAppOptions = {}): Hono<LeapifyEnv> {
   app.route('/internal/batch-release', batchReleaseRoute)
   app.route('/internal/reminder-emails', reminderEmailsRoute)
   app.route('/internal/renew-watches', renewWatchesRoute)
+  app.route('/internal/backfill-images', backfillImagesRoute)
 
   // OpenAPI docs — admin only
   app.get(
