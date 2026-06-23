@@ -301,8 +301,8 @@ export function createLeapifyClient(
      * Corrects slot count for a single event by fetching the real Google Forms response count.
      * Also returns deduplicated respondent emails with their latest submission time.
      */
-    reconcileEvent(slug: string): Promise<{ registeredSlots: number; respondents: { email: string; submittedAt: string }[] }> {
-      return post<{ registeredSlots: number; respondents: { email: string; submittedAt: string }[] }>(`/api/classes/${encodeURIComponent(slug)}/reconcile`);
+    reconcileEvent(slug: string): Promise<{ registeredSlots: number; registrationEnabled: boolean; respondents: { email: string; submittedAt: string }[] }> {
+      return post<{ registeredSlots: number; registrationEnabled: boolean; respondents: { email: string; submittedAt: string }[] }>(`/api/classes/${encodeURIComponent(slug)}/reconcile`);
     },
 
     /**

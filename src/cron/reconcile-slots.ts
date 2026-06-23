@@ -11,6 +11,20 @@ import { RegistrationsService } from "../services/registrations";
 export const RECONCILE_LOCK_KEY = "cron:reconcile-slots:lock";
 export const RECONCILE_LAST_RUN_KEY = "cron:reconcile-slots:last-run";
 const LOCK_TTL = 300; // 5 minutes
+const CONCURRENCY = 10;
+
+async function runConcurrent<T>(
+  items: T[],
+  fn: (item: T) => Promise<void>,
+  limit: number,
+): Promise<void> {
+  const queue = [...items];
+  await Promise.all(
+    Array.from({ length: limit }, async () => {
+      while (queue.length > 0) await fn(queue.shift()!);
+    }),
+  );
+}
 
 /**
  * Cron: every 5 minutes (`*\/5 * * * *`)
@@ -51,12 +65,19 @@ export async function reconcileSlots(env: LeapifyBindings): Promise<void> {
       where: isNotNull(events.gformsId),
       columns: { id: true, slug: true, gformsId: true, registeredSlots: true, status: true, maxSlots: true, registrationEnabled: true, registrationClosesAt: true },
     });
+    // Sort by status priority first, then by registrationClosesAt descending (newest first), nulls last
     const eventsWithForms = allEvents
       .filter((e) => e.gformsId)
-      .sort((a, b) => STATUS_PRIORITY[a.status] - STATUS_PRIORITY[b.status]);
+      .sort((a, b) => {
+        const statusDiff = STATUS_PRIORITY[a.status] - STATUS_PRIORITY[b.status];
+        if (statusDiff !== 0) return statusDiff;
+        if (b.registrationClosesAt === null) return -1;
+        if (a.registrationClosesAt === null) return 1;
+        return b.registrationClosesAt - a.registrationClosesAt;
+      });
     let corrected = 0;
 
-    for (const event of eventsWithForms) {
+    await runConcurrent(eventsWithForms, async (event) => {
       try {
         const responses = await gforms.getAllResponses(event.gformsId!);
         const googleCount = responses.length;
@@ -101,7 +122,7 @@ export async function reconcileSlots(env: LeapifyBindings): Promise<void> {
         // Don't let one form failure abort the whole reconciliation
         console.error(`[reconcile-slots] Error checking "${event.slug}":`, err);
       }
-    }
+    }, CONCURRENCY);
 
     console.log(
       `[reconcile-slots] Checked ${eventsWithForms.length} events, corrected ${corrected}.`,

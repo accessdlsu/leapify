@@ -375,7 +375,7 @@ classesRoute.post(
 
   const event = await db.query.events.findFirst({
     where: eq(events.slug, slug),
-    columns: { id: true, gformsId: true },
+    columns: { id: true, gformsId: true, maxSlots: true, registrationEnabled: true, registrationClosesAt: true },
   })
   if (!event) throw notFound('Event')
   if (!event.gformsId) return c.json({ error: 'No gformsId set for this event' }, 400)
@@ -384,6 +384,21 @@ classesRoute.post(
     const responses = await gforms.getAllResponses(event.gformsId)
     const googleCount = responses.length
     await slots.correctCount(slug, googleCount)
+
+    // Auto-close if full or past deadline (respects config:auto_close_registration flag)
+    const cache = new CacheService(c.env.KV)
+    const autoClose = (await cache.get<boolean>('config:auto_close_registration')) ?? true
+    let registrationEnabled = event.registrationEnabled
+    if (autoClose && registrationEnabled) {
+      const now = Math.floor(Date.now() / 1000)
+      const isFull = event.maxSlots > 0 && googleCount >= event.maxSlots
+      const isPastDeadline = !!event.registrationClosesAt && event.registrationClosesAt <= now
+      if (isFull || isPastDeadline) {
+        await db.update(events).set({ registrationEnabled: false }).where(eq(events.slug, slug))
+        await gforms.setAcceptingResponses(event.gformsId, false)
+        registrationEnabled = false
+      }
+    }
 
     // Deduplicate by email, keeping the latest submission
     const seen = new Map<string, string>()
@@ -409,7 +424,7 @@ classesRoute.post(
       })),
     )
 
-    return c.json({ data: { registeredSlots: googleCount, respondents } })
+    return c.json({ data: { registeredSlots: googleCount, registrationEnabled, respondents } })
   } catch (err: any) {
     const message = err?.message ?? 'Failed to fetch from Google Forms API'
     return c.json({ error: { code: 'GFORMS_API_ERROR', message } }, 502)
