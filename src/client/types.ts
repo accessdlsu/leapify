@@ -155,6 +155,7 @@ export interface SiteConfig {
   enhancementsMode: boolean;
   enhancementsUntil: number | null;
   allowedOrigins?: string[];
+  autoCloseRegistration: boolean;
   now: number;
 }
 

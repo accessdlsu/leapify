@@ -1,4 +1,4 @@
-import { isNotNull } from "drizzle-orm";
+import { isNotNull, eq } from "drizzle-orm";
 import type { EventStatus } from "../db/schema/classes";
 import type { LeapifyBindings } from "../types";
 import { createDb } from "../db";
@@ -43,11 +43,13 @@ export async function reconcileSlots(env: LeapifyBindings): Promise<void> {
     cancelled: 4,
   };
 
+  const autoClose = (await cache.get<boolean>('config:auto_close_registration')) ?? true;
+
   try {
     // Fetch all events with a Google Form, regardless of status
     const allEvents = await db.query.events.findMany({
       where: isNotNull(events.gformsId),
-      columns: { id: true, slug: true, gformsId: true, registeredSlots: true, status: true },
+      columns: { id: true, slug: true, gformsId: true, registeredSlots: true, status: true, maxSlots: true, registrationEnabled: true, registrationClosesAt: true },
     });
     const eventsWithForms = allEvents
       .filter((e) => e.gformsId)
@@ -77,6 +79,24 @@ export async function reconcileSlots(env: LeapifyBindings): Promise<void> {
             submittedAt: Math.floor(new Date(r.createTime).getTime() / 1000),
           }));
         await regs.syncRespondents(event.id, respondents);
+
+        // Auto-close if full or past deadline
+        if (autoClose && event.registrationEnabled) {
+          const now = Math.floor(Date.now() / 1000);
+          const isFull = event.maxSlots > 0 && googleCount >= event.maxSlots;
+          const isPastDeadline = !!event.registrationClosesAt && event.registrationClosesAt <= now;
+
+          if (isFull || isPastDeadline) {
+            try {
+              await db.update(events).set({ registrationEnabled: false }).where(eq(events.slug, event.slug));
+              await gforms.setAcceptingResponses(event.gformsId!, false);
+              const reason = isFull ? 'full' : 'deadline passed';
+              console.log(`[reconcile-slots] Auto-closed "${event.slug}" (${reason})`);
+            } catch (err) {
+              console.error(`[reconcile-slots] Failed to auto-close "${event.slug}":`, err);
+            }
+          }
+        }
       } catch (err) {
         // Don't let one form failure abort the whole reconciliation
         console.error(`[reconcile-slots] Error checking "${event.slug}":`, err);

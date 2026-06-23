@@ -59,7 +59,7 @@ export class GFormsService {
     const now = Math.floor(Date.now() / 1000);
     const claims = {
       iss: this.credentials.client_email,
-      scope: "https://www.googleapis.com/auth/forms.responses.readonly",
+      scope: "https://www.googleapis.com/auth/forms.responses.readonly https://www.googleapis.com/auth/forms.body",
       aud: "https://oauth2.googleapis.com/token",
       iat: now,
       exp: now + 3600,
@@ -234,6 +234,35 @@ export class GFormsService {
 
     const data = (await response.json()) as { id: string; expireTime: string };
     return { watchId: data.id, expireTime: data.expireTime };
+  }
+
+  /**
+   * Open or close a Google Form to new responses.
+   * Called when registrationEnabled is toggled or when a class fills up.
+   */
+  async setAcceptingResponses(formId: string, isAccepting: boolean): Promise<void> {
+    const token = await this.getAccessToken()
+
+    const response = await fetch(
+      `https://forms.googleapis.com/v1/forms/${formId}:setPublishSettings`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          publishSettings: {
+            publishState: { isPublished: true, isAcceptingResponses: isAccepting },
+          },
+        }),
+      },
+    )
+
+    if (!response.ok) {
+      const err = await response.text()
+      throw new Error(`Failed to set form accepting responses: ${err}`)
+    }
   }
 
   /**

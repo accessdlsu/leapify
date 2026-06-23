@@ -66,7 +66,7 @@ gformsWebhookRoute.post(
 
   const event = await db.query.events.findFirst({
     where: eq(events.gformsId, formId),
-    columns: { id: true, slug: true, maxSlots: true, registeredSlots: true },
+    columns: { id: true, slug: true, maxSlots: true, registeredSlots: true, gformsId: true, registrationEnabled: true },
   });
 
   if (!event) {
@@ -80,6 +80,28 @@ gformsWebhookRoute.post(
   console.log(
     `[gforms-webhook] Incremented "${event.slug}": ${updated?.registered}/${updated?.total}`,
   );
+
+  // Auto-close form if class is now full
+  if (
+    updated &&
+    updated.total > 0 &&
+    updated.registered >= updated.total &&
+    event.registrationEnabled &&
+    event.gformsId
+  ) {
+    const autoClose = (await c.env.KV.get('config:auto_close_registration', 'json') as boolean | null) ?? true;
+    if (autoClose) {
+      try {
+        await db.update(events).set({ registrationEnabled: false }).where(eq(events.gformsId, formId));
+        const gforms = new GFormsService(c.env.GFORMS_SERVICE_ACCOUNT_JSON);
+        await gforms.setAcceptingResponses(event.gformsId, false);
+        console.log(`[gforms-webhook] Auto-closed full event "${event.slug}"`);
+      } catch (err) {
+        console.error(`[gforms-webhook] Failed to auto-close "${event.slug}":`, err);
+        // Non-fatal: reconcile is the safety net
+      }
+    }
+  }
 
   // Fetch all respondents and upsert into registrations table (near-instant registration tracking)
   try {

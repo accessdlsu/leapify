@@ -75,6 +75,7 @@ export interface SiteConfigMap {
   allowed_origins: string[] // dynamic CORS allowed origins
   enhancements_mode: boolean
   enhancements_until: number // unix epoch
+  auto_close_registration: boolean
 }
 
 export type SiteConfigKey = keyof SiteConfigMap

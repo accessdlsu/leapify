@@ -35,6 +35,7 @@ siteConfigRoute.get(
       enhancementsMode: config.enhancements_mode ?? false,
       enhancementsUntil: config.enhancements_until ?? null,
       allowedOrigins: config.allowed_origins ?? null,
+      autoCloseRegistration: config.auto_close_registration ?? true,
       now: Math.floor(Date.now() / 1000)
     }
   })

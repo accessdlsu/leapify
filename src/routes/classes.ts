@@ -508,6 +508,21 @@ classesRoute.patch(
 
   if (!updated) throw notFound('Event')
 
+  if ('registrationEnabled' in body && updated.gformsId) {
+    try {
+      const gforms = new GFormsService(c.env.GFORMS_SERVICE_ACCOUNT_JSON)
+      await gforms.setAcceptingResponses(updated.gformsId, updated.registrationEnabled)
+    } catch (err) {
+      console.error(`[classes] GForms sync failed for "${slug}":`, err)
+      return c.json({
+        error: {
+          code: 'GFORMS_SYNC_FAILED',
+          message: 'Registration state saved but GForms sync failed. It will auto-correct after next slots refresh.',
+        }
+      }, 502)
+    }
+  }
+
   await Promise.all([
     cache.del(EVENTS_LIST_KV_KEY),
     cache.del(EVENTS_ETAG_KV_KEY),
