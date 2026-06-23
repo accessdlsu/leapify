@@ -10,7 +10,7 @@ import { RegistrationsService } from "../services/registrations";
 
 export const RECONCILE_LOCK_KEY = "cron:reconcile-slots:lock";
 export const RECONCILE_LAST_RUN_KEY = "cron:reconcile-slots:last-run";
-const LOCK_TTL = 300; // 5 minutes
+const LOCK_TTL = 120; // 2 minutes
 const CONCURRENCY = 10;
 
 async function runConcurrent<T>(
@@ -27,7 +27,7 @@ async function runConcurrent<T>(
 }
 
 /**
- * Cron: every 5 minutes (`*\/5 * * * *`)
+ * Cron: every 2 minutes (`*\/2 * * * *`)
  *
  * Compares D1 registered_slots against actual Google Forms response counts.
  * Corrects any drift caused by missed webhook notifications.

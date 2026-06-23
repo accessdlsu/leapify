@@ -101,7 +101,7 @@ export function createLeapify(options: LeapifyOptions = {}) {
     // Cloudflare Workers scheduled handler. Routes cron triggers by schedule string.
     // Cron schedule (configured in wrangler.toml):
     //   "* * * * *"   → batch-release
-    //   "*/5 * * * *" → reconcile-slots
+    //   "*/2 * * * *" → reconcile-slots
     //   "0 * * * *"   → reminder-emails + lifecycle-check
     //   "0 0 * * *"   → renew-watches
     async scheduled(
@@ -112,7 +112,7 @@ export function createLeapify(options: LeapifyOptions = {}) {
       const { cron } = event;
 
       if (cron === "* * * * *") await batchRelease(env);
-      if (cron === "*/5 * * * *") await reconcileSlots(env);
+      if (cron === "*/2 * * * *") await reconcileSlots(env);
       if (cron === "0 * * * *") {
         ctx.waitUntil(reminderEmails(env));
       }

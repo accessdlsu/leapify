@@ -61,7 +61,7 @@
   "triggers": {
     "crons": [
       "* * * * *", // batch-release   — publish queued events (every 1 min)
-      "*/5 * * * *", // reconcile-slots — D1 vs Google Forms drift fix (every 5 min)
+      "*/2 * * * *", // reconcile-slots — D1 vs Google Forms drift fix (every 2 min)
       "0 * * * *", // reminder-emails + lifecycle-check (every hour)
       "0 0 * * *" // renew-watches   — renew expiring Google Forms Watches (daily)
     ]
